@@ -44,7 +44,8 @@ def test_bare_install_checks_the_manifest_delta(tmp_path):
     """The bypass: the agent edits package.json, then runs a bare `npm install`."""
     (tmp_path / "package.json").write_text(json.dumps({"dependencies": {"axios": "^1.15.0", "new-dep": "1.0.0"}}))
     (tmp_path / "package-lock.json").write_text(json.dumps({"packages": {"node_modules/axios": {"version": "1.15.2"}}}))
-    assert targets("npm install", str(tmp_path)) == [("npm", "new-dep@1.0.0")]
+    # new-dep is not in the lockfile; with no git baseline the locked direct dependency is checked too (review of 6e13197)
+    assert targets("npm install", str(tmp_path)) == [("npm", "new-dep@1.0.0"), ("npm", "axios@1.15.2")]
 
 
 def test_requirements_file(tmp_path):
@@ -168,3 +169,40 @@ def test_lockfile_entries_changed_since_head_are_checked(tmp_path):
     lock["packages"]["node_modules/axios"]["version"] = "1.14.1"  # the agent edits the lockfile directly
     (tmp_path / "package-lock.json").write_text(json.dumps(lock))
     assert plan("npm ci", str(tmp_path), {})[0] == [("npm", "axios@1.14.1")]
+
+
+# ---- review of 6e13197 ---------------------------------------------------------------------------------------------
+def test_more_unverifiable_sources_ask(tmp_path):
+    cwd = str(tmp_path)
+    for cmd in ("npm i x@gitlab:a/b", "npm i x@user/repo", "npm i x@git+ssh://git@h/r.git", "pip install 'pkg @ https://x.test/p.whl'",
+                "pip install -e git+https://github.com/x/y#egg=y", "npm i axios --@acme:registry=https://evil.test",
+                "npm i axios --userconfig ./evil.npmrc"):
+        assert _asks(cmd, cwd), cmd
+    assert _asks("pip install requests", cwd, {"PIP_CONFIG_FILE": "/tmp/pip.conf"})
+    (tmp_path / ".npmrc").write_text("registry=https://evil.test/\n")
+    assert _asks("npm i axios", cwd)
+
+
+def test_requirements_direct_reference_asks(tmp_path):
+    (tmp_path / "r.txt").write_text("pkg @ https://x.test/p.whl\n")
+    assert _asks("pip install -r r.txt", str(tmp_path))
+
+
+def test_shell_flags_and_env_s(tmp_path):
+    from skedaddle_mcp.hook import plan
+
+    cwd = str(tmp_path)
+    assert plan("bash -lc 'npm i left-pad'", cwd, {})[0] == [("npm", "left-pad")]
+    assert plan("env -S 'npm i left-pad'", cwd, {})[0] == [("npm", "left-pad")]
+
+
+def test_lockfile_without_head_checks_direct_deps_and_foreign_resolved_asks(tmp_path):
+    from skedaddle_mcp.hook import plan
+
+    (tmp_path / "package.json").write_text(json.dumps({"dependencies": {"axios": "^1.0.0"}}))
+    (tmp_path / "package-lock.json").write_text(json.dumps({"packages": {"node_modules/axios": {
+        "version": "1.14.1", "resolved": "https://registry.npmjs.org/axios/-/axios-1.14.1.tgz"}}}))
+    assert plan("npm ci", str(tmp_path), {})[0] == [("npm", "axios@1.14.1")]  # no git baseline: direct deps checked
+    (tmp_path / "package-lock.json").write_text(json.dumps({"packages": {"node_modules/axios": {
+        "version": "1.15.2", "resolved": "https://evil.test/axios-1.15.2.tgz"}}}))
+    assert _asks("npm ci", str(tmp_path))

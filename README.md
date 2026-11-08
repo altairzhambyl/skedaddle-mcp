@@ -120,7 +120,17 @@ uv `exclude-newer`. A cooldown alone would have stopped the axios and litellm re
 | [Aikido safe-chain](https://github.com/AikidoSec/safe-chain), [Socket sfw](https://github.com/SocketDev/sfw-free) | malware gating as an install wrapper, no account | different licences; skedaddle adds release-integrity signals |
 | [Socket MCP](https://github.com/SocketDev/socket-mcp) | package scores over MCP | needs a Socket sign-in per call |
 
+## Threat model
+
+skedaddle catches the mistakes of a **cooperative agent using ordinary commands**: a hallucinated name, a pinned
+version that was compromised, a lockfile edit, a git or custom-registry source it did not notice. It is not a sandbox:
+an agent (or a prompt injection) that deliberately hides an install — a script file, `eval`, base64, a binary that
+fetches packages — is out of scope. For that, run installs without network access or in a container.
+
 ## Limitations
+
+- A custom registry in your *global* `~/.npmrc` or `pip.conf` is not detected (a project `.npmrc` is): the checks run
+  against the public registries.
 
 - No tarball-vs-source diff yet (the xz-utils class); `no-git-head` is a weak proxy.
 - Typosquats that sit quietly for months, and long-con maintainers, pass the integrity signals; only OSV catches them

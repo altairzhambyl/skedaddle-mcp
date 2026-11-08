@@ -93,7 +93,20 @@ PIP_VALUES = {
     "--directory",
     "--project",
 }
-REGISTRY_FLAGS = {"--registry", "-i", "--index-url", "--extra-index-url", "-f", "--find-links", "--index", "--default-index"}
+REGISTRY_FLAGS = {
+    "--registry",
+    "-i",
+    "--index-url",
+    "--extra-index-url",
+    "-f",
+    "--find-links",
+    "--index",
+    "--default-index",
+    "--userconfig",
+    "--globalconfig",
+    "--config-file",
+}
+OFFICIAL = re.compile(r"^https?://(registry\.npmjs\.org|registry\.yarnpkg\.com|pypi\.org/simple|files\.pythonhosted\.org)/?")
 REGISTRY_ENV = (
     "npm_config_registry",
     "NPM_CONFIG_REGISTRY",
@@ -108,6 +121,11 @@ REGISTRY_ENV = (
     "UV_INDEX",
     "UV_DEFAULT_INDEX",
     "UV_FIND_LINKS",
+    "NPM_CONFIG_USERCONFIG",
+    "npm_config_userconfig",
+    "NPM_CONFIG_GLOBALCONFIG",
+    "PIP_CONFIG_FILE",
+    "UV_CONFIG_FILE",
 )
 WRAPPER_OPTS = {
     "sudo": {"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-U"},
@@ -139,6 +157,15 @@ class Plan:
             m = re.match(r"^(@?[^@]+)@npm:(.+)$", spec)  # alias: x@npm:real@1.0.0 installs `real`
             if m:
                 spec = m[2]
+            ver = re.match(r"^@?[^@]+@(.+)$", spec)
+            if ver and re.search(r"[:/]", ver[1]):  # x@gitlab:a/b, x@user/repo, x@git+ssh://...
+                self.asks.append(f"{spec}: a git/URL source in the version, not a registry package skedaddle can check")
+                return
+        else:
+            if re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]*(\[[^\]]*\])?\s*@\s*\S", spec):  # PEP 508: name @ url
+                self.asks.append(f"{spec}: a direct URL reference, not a registry package skedaddle can check")
+                return
+            spec = _pypi_name(spec)
         self.targets.append((eco, spec))
 
 
@@ -152,6 +179,14 @@ def _words(seg: str) -> list[str]:
             w = w[1:]
             continue
         base = os.path.basename(w[0])
+        if base == "env":
+            for j, t in enumerate(w[1:], 1):
+                if not t.startswith("-"):
+                    break
+                if t in ("-S", "--split-string") and j + 1 < len(w):
+                    return _words(w[j + 1]) + w[j + 2 :]
+                if t.startswith(("-S", "--split-string=")):
+                    return _words(t.split("=", 1)[1] if "=" in t else t[2:]) + w[j + 1 :]
         if base in WRAPPER_OPTS:
             i = 1
             while i < len(w) and w[i].startswith("-"):
@@ -162,6 +197,19 @@ def _words(seg: str) -> list[str]:
             continue
         break
     return w
+
+
+def _shell_command(args: list[str]) -> str | None:
+    """The command string of `sh -c CMD` / `bash -lc CMD` / `sh -e -c CMD`; None if this is not a -c invocation."""
+    has_c = False
+    for i, a in enumerate(args):
+        if a.startswith("-") and not a.startswith("--") and len(a) > 1:
+            has_c = has_c or "c" in a[1:]
+            continue
+        if a.startswith("--"):
+            continue
+        return a if has_c else None
+    return None
 
 
 def _env_assignments(seg: str) -> dict[str, str]:
@@ -212,10 +260,18 @@ def _pypi_name(spec: str) -> str:
 
 
 def _registry_override(flags: dict[str, list[str]], env: dict[str, str]) -> str | None:
-    hit = next((f for f in flags if f in REGISTRY_FLAGS), None)
+    hit = next(
+        (
+            f
+            for f in flags
+            if (f in REGISTRY_FLAGS or re.match(r"^--@[^:]+:registry$", f))
+            and not all(OFFICIAL.match(v) for v in flags[f] or ["?"])
+        ),
+        None,
+    )
     if hit:
         return f"{hit} {' '.join(flags[hit])[:80]}"
-    return next((f"{k}={env[k][:80]}" for k in REGISTRY_ENV if env.get(k)), None)
+    return next((f"{k}={env[k][:80]}" for k in REGISTRY_ENV if env.get(k) and not OFFICIAL.match(env[k])), None)
 
 
 def plan(command: str, cwd: str, env: dict[str, str] | None = None, depth: int = 0) -> tuple[list[tuple[str, str]], list[str]]:
@@ -239,19 +295,21 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
         if prog == "cd" and args:
             cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(args[0])))
             continue
-        if prog in SHELLS and len(args) >= 2 and args[0] == "-c" and depth < 3:
-            _walk(args[1], cwd, p, depth + 1)
-            continue
+        if prog in SHELLS:
+            inner = _shell_command(args)
+            if inner is not None and depth < 3:
+                _walk(inner, cwd, p, depth + 1)
+                continue
         if prog in ("python", "python3") and args[:2] == ["-m", "pip"]:
             prog, args = "pip", args[2:]
         if prog in RUNNERS:
             ops, fl = _operands(args, NPM_VALUES)
-            _reg(p, fl, env)
+            _reg(p, fl, env, cwd)
             for s in (fl.get("--package", []) + fl.get("-p", [])) or ops[:1]:
                 p.add("npm", s)
         elif prog in NPM_LIKE:
             ops, fl = _operands(args, NPM_VALUES, frozenset(PNPM_BOOL) if prog == "pnpm" else frozenset())
-            _reg(p, fl, env)
+            _reg(p, fl, env, cwd)
             sub = ops[0] if ops else ("install" if prog == "yarn" else "")
             rest = ops[1:]
             if sub == "global" and rest:  # yarn global add x
@@ -270,7 +328,7 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
                 for s in rest:
                     p.add("npm", s)
             elif sub in NPM_BARE or (prog == "yarn" and not ops):
-                for s in _npm_manifest_delta(cwd) + _npm_lock_changes(cwd):
+                for s in _npm_manifest_delta(cwd) + _npm_lock_changes(cwd, p):
                     p.add("npm", s)
         elif prog in ("pip", "pip3") or (prog == "uv" and args[:1] == ["pip"]):
             a = args[1:] if prog == "uv" else args
@@ -278,24 +336,30 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
                 ops, fl = _operands(a[1:], PIP_VALUES)
                 _reg(p, fl, env)
                 for o in ops[1:] if a[:1] == ["sync"] else ops:
-                    p.add("pypi", _pypi_name(o) if not REMOTE.match(o) else o)
+                    p.add("pypi", o)
+                for e in fl.get("-e", []) + fl.get("--editable", []):
+                    p.add("pypi", e)
                 for f in fl.get("-r", []) + fl.get("--requirement", []) + (ops[:1] if a[:1] == ["sync"] else []):
                     _requirements(os.path.join(cwd, f), p, set())
         elif prog == "uv" and args[:1] == ["add"]:
             ops, fl = _operands(args[1:], PIP_VALUES)
             _reg(p, fl, env)
             for o in ops:
-                p.add("pypi", _pypi_name(o) if not REMOTE.match(o) else o)
+                p.add("pypi", o)
         elif prog in ("uvx", "pipx"):
             a = args[1:] if prog == "pipx" and args[:1] in (["install"], ["run"], ["inject"]) else args
             ops, fl = _operands(a, PIP_VALUES)
             _reg(p, fl, env)
             for s in (fl.get("--from", []) or ops[:1]) + fl.get("--with", []):
-                p.add("pypi", _pypi_name(s) if not REMOTE.match(s) else s)
+                p.add("pypi", s)
 
 
-def _reg(p: Plan, flags: dict[str, list[str]], env: dict[str, str]) -> None:
+def _reg(p: Plan, flags: dict[str, list[str]], env: dict[str, str], npmrc_dir: str | None = None) -> None:
     why = _registry_override(flags, env)
+    if not why and npmrc_dir is not None:  # a project .npmrc pointing at another registry
+        m = re.search(r"^\s*(@[^:\s]+:)?registry\s*=\s*(\S+)", _read(os.path.join(npmrc_dir, ".npmrc")), re.MULTILINE)
+        if m and not OFFICIAL.match(m[2]):
+            why = f".npmrc {m[0].strip()[:80]}"
     if why:
         p.asks.append(f"custom registry/index ({why}): packages would come from a source skedaddle does not check")
 
@@ -330,31 +394,55 @@ def _read(path: str) -> str:
         return ""
 
 
-def _lock_versions(text: str) -> dict[str, str]:
+def _lock_entries(text: str) -> dict[str, tuple[str, str]]:
+    """name -> (version, resolved URL) from a package-lock.json v2/v3 text."""
     try:
         pk = (json.loads(text) if text else {}).get("packages") or {}
     except ValueError:
         return {}
-    return {
-        k.rsplit("node_modules/", 1)[-1]: m["version"]
-        for k, m in pk.items()
-        if "node_modules/" in k and isinstance(m, dict) and m.get("version")
-    }
+    return {k.rsplit("node_modules/", 1)[-1]: (m["version"], str(m.get("resolved") or ""))
+            for k, m in pk.items() if "node_modules/" in k and isinstance(m, dict) and m.get("version")}
 
 
-def _npm_lock_changes(cwd: str) -> list[str]:
-    """Lockfile entries that are new or changed since git HEAD: a direct lockfile edit installs without a manifest change."""
-    now = _lock_versions(_read(os.path.join(cwd, "package-lock.json")))
+def _lock_versions(text: str) -> dict[str, str]:
+    return {n: v for n, (v, _) in _lock_entries(text).items()}
+
+
+def _git_head_file(cwd: str, rel: str) -> str | None:
+    """File content at git HEAD, or None. `cat-file blob` runs no textconv/filters; system config is ignored."""
+    try:
+        r = subprocess.run(["git", "-C", cwd, "-c", "core.fsmonitor=false", "cat-file", "blob", f"HEAD:./{rel}"], check=False,
+                           capture_output=True, text=True, timeout=5, env={**os.environ, "GIT_CONFIG_NOSYSTEM": "1"})
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+
+def _npm_lock_changes(cwd: str, p: Plan) -> list[str]:
+    """Lockfile entries new or changed since git HEAD (a direct lockfile edit installs with no manifest change); with no
+    git baseline, the direct dependencies' locked versions. An entry resolved outside the official registry is asked."""
+    now = _lock_entries(_read(os.path.join(cwd, "package-lock.json")))
     if not now:
         return []
-    try:
-        r = subprocess.run(["git", "-C", cwd, "show", "HEAD:./package-lock.json"], check=False, capture_output=True, text=True, timeout=5)
-    except (OSError, subprocess.SubprocessError):
-        return []
-    if r.returncode != 0:
-        return []  # not committed yet: the manifest delta covers a fresh project
-    head = _lock_versions(r.stdout)
-    return [f"{n}@{v}" for n, v in sorted(now.items()) if head.get(n) != v]
+    head_text = _git_head_file(cwd, "package-lock.json")
+    if head_text is not None:
+        head = _lock_entries(head_text)
+        picked = {n: e for n, e in now.items() if head.get(n) != e}
+    else:
+        try:
+            with open(os.path.join(cwd, "package.json"), encoding="utf-8") as fh:
+                pkg = json.load(fh)
+        except (OSError, ValueError):
+            pkg = {}
+        direct = {**(pkg.get("dependencies") or {}), **(pkg.get("devDependencies") or {}), **(pkg.get("optionalDependencies") or {})}
+        picked = {n: e for n, e in now.items() if n in direct}
+    out = []
+    for n, (v, resolved) in sorted(picked.items()):
+        if resolved and not OFFICIAL.match(resolved):
+            p.asks.append(f"{n}@{v} resolves to {resolved[:100]}, not the official registry")
+            continue
+        out.append(f"{n}@{v}")
+    return out
 
 
 def _requirements(path: str, p: Plan, seen: set[str]) -> None:
@@ -383,7 +471,7 @@ def _requirements(path: str, p: Plan, seen: set[str]) -> None:
             elif opt in ("-e", "--editable"):
                 p.add("pypi", val)
             continue
-        p.add("pypi", _pypi_name(ln) if not REMOTE.match(ln) else ln)
+        p.add("pypi", ln)
 
 
 def targets(command: str, cwd: str) -> list[tuple[str, str]]:
