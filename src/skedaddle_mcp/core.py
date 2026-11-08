@@ -509,24 +509,27 @@ def check_package(ecosystem: str, name: str, version: str | None = None) -> Repo
         return rep.finish()
     except FetchError as e:
         rep.verdict = "error"
-        rep.add(
-            Finding(
-                "unverifiable",
-                "warn",
-                f"could not reach the registry ({e}); treat the package as unchecked",
-            )
-        )
+        rep.add(Finding("unverifiable", "warn", f"could not reach the registry ({e}); treat the package as unchecked"))
+        return rep
+    except (AttributeError, TypeError, KeyError, ValueError, IndexError) as e:  # an unexpected registry answer shape
+        rep.verdict = "error"
+        rep.add(Finding("unverifiable", "warn", f"unexpected registry answer ({type(e).__name__}: {str(e)[:120]})"))
         return rep
     try:
         osv_findings(rep, eco, name, version)
-    except FetchError as e:
+    except (FetchError, AttributeError, TypeError, KeyError, ValueError) as e:
+        # malware and CVE status unknown: not an allow (the hook asks the user)
         rep.add(
             Finding(
                 "unverifiable",
                 "warn",
-                f"could not reach OSV ({e}); malware and CVE status unchecked",
+                f"could not check OSV ({type(e).__name__}: {str(e)[:120]}); malware and CVE status unknown",
             )
         )
+        rep.finish()
+        if rep.verdict != "block":
+            rep.verdict = "error"
+        return rep
     return rep.finish()
 
 

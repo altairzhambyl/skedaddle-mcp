@@ -206,3 +206,46 @@ def test_lockfile_without_head_checks_direct_deps_and_foreign_resolved_asks(tmp_
     (tmp_path / "package-lock.json").write_text(json.dumps({"packages": {"node_modules/axios": {
         "version": "1.15.2", "resolved": "https://evil.test/axios-1.15.2.tgz"}}}))
     assert _asks("npm ci", str(tmp_path))
+
+
+# ---- independent review of 8605b68 + review of 2c79f51 ---------------------------------------------------------------
+def test_more_commands(tmp_path):
+    from skedaddle_mcp.hook import plan
+
+    cwd = str(tmp_path)
+    cases = {
+        "python3.12 -m pip install httpx": [("pypi", "httpx")],
+        "pip3.12 install httpx": [("pypi", "httpx")],
+        "uv tool install ruff": [("pypi", "ruff")],
+        "uv run --with rich python x.py": [("pypi", "rich")],
+        "poetry add requests": [("pypi", "requests")],
+        "cargo add serde": [("crates", "serde")],
+        "cargo install ripgrep": [("crates", "ripgrep")],
+        "timeout 60 npm i left-pad": [("npm", "left-pad")],
+        "bash -o pipefail -c 'npm i left-pad'": [("npm", "left-pad")],
+    }
+    for cmd, want in cases.items():
+        assert plan(cmd, cwd, {})[0] == want, cmd
+
+
+def test_registry_lookalikes_and_env_s_assignments_ask(tmp_path):
+    cwd = str(tmp_path)
+    assert _asks("npm i axios --registry https://registry.npmjs.org@evil.test/", cwd)
+    assert _asks("npm i axios --registry http://registry.npmjs.org/", cwd)  # not https
+    assert _asks("env -S 'npm_config_registry=https://evil.test npm i axios'", cwd)
+    assert _asks("env npm_config_registry=https://evil.test npm i axios", cwd)
+    assert not _asks("npm i axios --registry https://registry.npmjs.org/", cwd)
+    (tmp_path / ".npmrc").write_text("registry=https://registry.npmjs.org/\n@acme:registry=https://evil.test/\n")
+    assert _asks("npm i axios", cwd)  # every registry line, not the first
+
+
+def test_hook_time_budget_asks(registry, tmp_path, monkeypatch):
+    import time
+
+    from skedaddle_mcp import hook
+
+    monkeypatch.setenv("SKEDADDLE_HOOK_BUDGET", "1")
+    monkeypatch.setattr(hook, "check_package", lambda *a, **k: time.sleep(5))
+    t = time.time()
+    out = hook.decide("npm i a b c", str(tmp_path), {})
+    assert time.time() - t < 3 and out["hookSpecificOutput"]["permissionDecision"] == "ask"

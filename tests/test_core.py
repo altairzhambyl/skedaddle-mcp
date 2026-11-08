@@ -159,3 +159,23 @@ def test_parse_spec_alias_and_unverifiable_sources():
     for s in ("x@github:user/repo", "git+https://github.com/x/y", "https://x.test/p.tgz", "x@file:../p"):
         with pytest.raises(ValueError):
             parse_spec("npm", s)
+
+
+def test_osv_down_is_error_not_allow(registry, monkeypatch):
+    from skedaddle_mcp import core
+    from skedaddle_mcp.http import FetchError
+
+    real = core.get_json
+
+    def flaky(url, body=None, **k):
+        if "osv.dev" in url:
+            raise FetchError("osv down")
+        return real(url, body, **k)
+
+    monkeypatch.setattr(core, "get_json", flaky)
+    assert check_package("npm", "express", "5.1.0").verdict == "error"
+
+
+def test_malformed_registry_json_is_error(registry):
+    registry("https://registry.npmjs.org/pkg-g", [])
+    assert check_package("npm", "pkg-g").verdict == "error"

@@ -18,6 +18,8 @@ import re
 import shlex
 import subprocess
 import sys
+import urllib.parse
+from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Any
 
 from .core import check_package, parse_spec
@@ -106,7 +108,19 @@ REGISTRY_FLAGS = {
     "--globalconfig",
     "--config-file",
 }
-OFFICIAL = re.compile(r"^https?://(registry\.npmjs\.org|registry\.yarnpkg\.com|pypi\.org/simple|files\.pythonhosted\.org)/?")
+OFFICIAL_HOSTS = {"registry.npmjs.org": "", "registry.yarnpkg.com": "", "pypi.org": "/simple", "files.pythonhosted.org": ""}
+
+
+def official(url: str) -> bool:
+    """https, no user:password@, an exact official host (pypi.org only under /simple)."""
+    try:
+        u = urllib.parse.urlsplit(url.strip())
+    except ValueError:
+        return False
+    if u.scheme != "https" or u.username or u.password or u.port not in (None, 443) or u.hostname not in OFFICIAL_HOSTS:
+        return False
+    prefix = OFFICIAL_HOSTS[u.hostname]
+    return not prefix or u.path == prefix or u.path.startswith(prefix + "/")
 REGISTRY_ENV = (
     "npm_config_registry",
     "NPM_CONFIG_REGISTRY",
@@ -161,7 +175,7 @@ class Plan:
             if ver and re.search(r"[:/]", ver[1]):  # x@gitlab:a/b, x@user/repo, x@git+ssh://...
                 self.asks.append(f"{spec}: a git/URL source in the version, not a registry package skedaddle can check")
                 return
-        else:
+        elif eco == "pypi":
             if re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]*(\[[^\]]*\])?\s*@\s*\S", spec):  # PEP 508: name @ url
                 self.asks.append(f"{spec}: a direct URL reference, not a registry package skedaddle can check")
                 return
@@ -169,13 +183,18 @@ class Plan:
         self.targets.append((eco, spec))
 
 
-def _words(seg: str) -> list[str]:
+def _unwrap(seg: str) -> tuple[list[str], dict[str, str]]:
+    """Program words of a shell segment with leading NAME=VALUE assignments, `env [-S 'cmd']`, sudo/nice/timeout...
+    removed; the assignments (wherever they appeared) are returned so registry overrides set there are seen."""
     try:
         w = shlex.split(seg)
     except ValueError:
         w = seg.split()
+    assigns: dict[str, str] = {}
     while w:
-        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", w[0]):
+        m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", w[0], re.DOTALL)
+        if m:
+            assigns[m[1]] = m[2]
             w = w[1:]
             continue
         base = os.path.basename(w[0])
@@ -183,10 +202,12 @@ def _words(seg: str) -> list[str]:
             for j, t in enumerate(w[1:], 1):
                 if not t.startswith("-"):
                     break
-                if t in ("-S", "--split-string") and j + 1 < len(w):
-                    return _words(w[j + 1]) + w[j + 2 :]
-                if t.startswith(("-S", "--split-string=")):
-                    return _words(t.split("=", 1)[1] if "=" in t else t[2:]) + w[j + 1 :]
+                split = w[j + 1] if t in ("-S", "--split-string") and j + 1 < len(w) else (
+                    t.split("=", 1)[1] if t.startswith("--split-string=") else t[2:] if t.startswith("-S") and len(t) > 2 else None)
+                if split is not None:
+                    inner, more = _unwrap(split)
+                    rest = w[j + 2:] if t in ("-S", "--split-string") else w[j + 1:]
+                    return inner + rest, {**assigns, **more}
         if base in WRAPPER_OPTS:
             i = 1
             while i < len(w) and w[i].startswith("-"):
@@ -196,34 +217,33 @@ def _words(seg: str) -> list[str]:
             w = w[i:]
             continue
         break
-    return w
+    return w, assigns
+
+
+def _words(seg: str) -> list[str]:
+    return _unwrap(seg)[0]
+
+
+SHELL_VALUE_OPTS = {"-o", "+o", "-O", "+O", "--rcfile", "--init-file"}
 
 
 def _shell_command(args: list[str]) -> str | None:
-    """The command string of `sh -c CMD` / `bash -lc CMD` / `sh -e -c CMD`; None if this is not a -c invocation."""
-    has_c = False
-    for i, a in enumerate(args):
-        if a.startswith("-") and not a.startswith("--") and len(a) > 1:
-            has_c = has_c or "c" in a[1:]
+    """The command string of `sh -c CMD` / `bash -lc CMD` / `bash -o pipefail -c CMD`; None if not a -c invocation."""
+    has_c, i = False, 0
+    while i < len(args):
+        a = args[i]
+        if a in SHELL_VALUE_OPTS:
+            i += 2
             continue
         if a.startswith("--"):
+            i += 1
+            continue
+        if a.startswith(("-", "+")) and len(a) > 1:
+            has_c = has_c or "c" in a[1:]
+            i += 1
             continue
         return a if has_c else None
     return None
-
-
-def _env_assignments(seg: str) -> dict[str, str]:
-    try:
-        w = shlex.split(seg)
-    except ValueError:
-        return {}
-    out = {}
-    for t in w:
-        m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", t)
-        if not m:
-            break
-        out[m[1]] = m[2]
-    return out
 
 
 def _operands(
@@ -265,13 +285,13 @@ def _registry_override(flags: dict[str, list[str]], env: dict[str, str]) -> str 
             f
             for f in flags
             if (f in REGISTRY_FLAGS or re.match(r"^--@[^:]+:registry$", f))
-            and not all(OFFICIAL.match(v) for v in flags[f] or ["?"])
+            and not all(official(v) for v in flags[f] or ["?"])
         ),
         None,
     )
     if hit:
         return f"{hit} {' '.join(flags[hit])[:80]}"
-    return next((f"{k}={env[k][:80]}" for k in REGISTRY_ENV if env.get(k) and not OFFICIAL.match(env[k])), None)
+    return next((f"{k}={env[k][:80]}" for k in REGISTRY_ENV if env.get(k) and not official(env[k])), None)
 
 
 def plan(command: str, cwd: str, env: dict[str, str] | None = None, depth: int = 0) -> tuple[list[tuple[str, str]], list[str]]:
@@ -287,8 +307,8 @@ def plan(command: str, cwd: str, env: dict[str, str] | None = None, depth: int =
 
 def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
     for seg in SEP.split(command):
-        env = {**p.env, **_env_assignments(seg)}
-        w = _words(seg)
+        w, assigns = _unwrap(seg)
+        env = {**p.env, **assigns}
         if not w:
             continue
         prog, args = os.path.basename(w[0]), w[1:]
@@ -300,7 +320,7 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
             if inner is not None and depth < 3:
                 _walk(inner, cwd, p, depth + 1)
                 continue
-        if prog in ("python", "python3") and args[:2] == ["-m", "pip"]:
+        if re.match(r"^python(\d+(\.\d+)?)?$", prog) and args[:2] == ["-m", "pip"]:
             prog, args = "pip", args[2:]
         if prog in RUNNERS:
             ops, fl = _operands(args, NPM_VALUES)
@@ -330,7 +350,7 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
             elif sub in NPM_BARE or (prog == "yarn" and not ops):
                 for s in _npm_manifest_delta(cwd) + _npm_lock_changes(cwd, p):
                     p.add("npm", s)
-        elif prog in ("pip", "pip3") or (prog == "uv" and args[:1] == ["pip"]):
+        elif re.match(r"^pip(\d+(\.\d+)?)?$", prog) or (prog == "uv" and args[:1] == ["pip"]):
             a = args[1:] if prog == "uv" else args
             if a[:1] in (["install"], ["sync"]):
                 ops, fl = _operands(a[1:], PIP_VALUES)
@@ -341,7 +361,27 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
                     p.add("pypi", e)
                 for f in fl.get("-r", []) + fl.get("--requirement", []) + (ops[:1] if a[:1] == ["sync"] else []):
                     _requirements(os.path.join(cwd, f), p, set())
-        elif prog == "uv" and args[:1] == ["add"]:
+        elif prog == "uv" and args[:2] == ["tool", "install"]:
+            ops, fl = _operands(args[2:], PIP_VALUES)
+            _reg(p, fl, env)
+            for o in (fl.get("--from", []) or ops[:1]) + fl.get("--with", []):
+                p.add("pypi", o)
+        elif prog == "uv" and args[:1] == ["run"]:
+            _, fl = _operands(args[1:], PIP_VALUES)
+            if fl.get("--with"):
+                _reg(p, fl, env)
+            for o in fl.get("--with", []):
+                p.add("pypi", o)
+        elif prog == "cargo" and args[:1] in (["add"], ["install"]):
+            ops, fl = _operands(args[1:], {"--registry", "--index", "--git", "--path", "-p", "--package", "--features", "-F",
+                                           "--rename", "--target", "--root", "--version", "--vers", "--branch", "--tag", "--rev"})
+            if any(f in fl for f in ("--registry", "--index", "--git")):
+                p.asks.append("cargo with --registry/--index/--git: a source skedaddle does not check")
+            ver = (fl.get("--version") or fl.get("--vers") or [None])[0]
+            if "--path" not in fl:
+                for o in ops:
+                    p.add("crates", f"{o}@{ver}" if ver and "@" not in o else o)
+        elif (prog == "uv" and args[:1] == ["add"]) or (prog == "poetry" and args[:1] == ["add"]):
             ops, fl = _operands(args[1:], PIP_VALUES)
             _reg(p, fl, env)
             for o in ops:
@@ -356,10 +396,17 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
 
 def _reg(p: Plan, flags: dict[str, list[str]], env: dict[str, str], npmrc_dir: str | None = None) -> None:
     why = _registry_override(flags, env)
-    if not why and npmrc_dir is not None:  # a project .npmrc pointing at another registry
-        m = re.search(r"^\s*(@[^:\s]+:)?registry\s*=\s*(\S+)", _read(os.path.join(npmrc_dir, ".npmrc")), re.MULTILINE)
-        if m and not OFFICIAL.match(m[2]):
-            why = f".npmrc {m[0].strip()[:80]}"
+    if not why and npmrc_dir is not None:  # every registry line of a project .npmrc (cwd and its parents)
+        d = os.path.abspath(npmrc_dir)
+        for _ in range(12):
+            for m in re.finditer(r"^\s*(@[^:\s]+:)?registry\s*=\s*(\S+)", _read(os.path.join(d, ".npmrc")), re.MULTILINE):
+                if not official(m[2]):
+                    why = f"{os.path.join(d, '.npmrc')}: {m[0].strip()[:80]}"
+                    break
+            parent = os.path.dirname(d)
+            if why or parent == d:
+                break
+            d = parent
     if why:
         p.asks.append(f"custom registry/index ({why}): packages would come from a source skedaddle does not check")
 
@@ -438,7 +485,7 @@ def _npm_lock_changes(cwd: str, p: Plan) -> list[str]:
         picked = {n: e for n, e in now.items() if n in direct}
     out = []
     for n, (v, resolved) in sorted(picked.items()):
-        if resolved and not OFFICIAL.match(resolved):
+        if resolved and not official(resolved):
             p.asks.append(f"{n}@{v} resolves to {resolved[:100]}, not the official registry")
             continue
         out.append(f"{n}@{v}")
@@ -484,16 +531,31 @@ def decide(command: str, cwd: str, env: dict[str, str] | None = None) -> dict[st
     if not tg and not asks:
         return None
     blocks, warns, errors = [], [], list(asks)
+    jobs = []
     for eco, spec in tg:
         try:
-            name, version = parse_spec(eco, spec)
+            jobs.append((eco, *parse_spec(eco, spec)))
         except ValueError as e:
             errors.append(str(e))
+    budget = float(os.environ.get("SKEDADDLE_HOOK_BUDGET", "20"))  # under the harness timeout: a killed hook = allowed
+    ex = ThreadPoolExecutor(max_workers=8)
+    futs = {ex.submit(check_package, eco, name, version): (eco, name) for eco, name, version in jobs}
+    done, late = wait(futs, timeout=budget)
+    ex.shutdown(wait=False, cancel_futures=True)
+    errors += [f"{futs[fut][0]}:{futs[fut][1]}: not checked within {budget:.0f}s" for fut in late]
+    for fut in done:
+        eco, name = futs[fut]
+        try:
+            rep = fut.result()
+        except Exception as e:  # noqa: BLE001 — any failure in one check is "could not verify", never an allow
+            errors.append(f"{eco}:{name}: check failed ({type(e).__name__})")
             continue
-        rep = check_package(eco, name, version)
+        if rep is None:
+            errors.append(f"{eco}:{name}: no result")
+            continue
         label = f"{eco}:{name}{'@' + rep.version if rep.version else ''}"
-        shown = [f for f in rep.findings if f.severity != "info" and (rep.verdict != "block" or f.severity == "block")]
-        lines = [f"{label}: {f.message}" + (f" ({f.source})" if f.source else "") for f in shown]
+        shown = [x for x in rep.findings if x.severity != "info" and (rep.verdict != "block" or x.severity == "block")]
+        lines = [f"{label}: {x.message}" + (f" ({x.source})" if x.source else "") for x in shown]
         {"block": blocks, "warn": warns, "error": errors}.get(rep.verdict, []).extend(lines)
     if blocks:
         return _out(

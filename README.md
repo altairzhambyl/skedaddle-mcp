@@ -53,15 +53,19 @@ An MCP tool is advisory: the model may not call it. A hook runs on every shell c
 {
   "hooks": {
     "PreToolUse": [
-      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "skedaddle-mcp hook", "timeout": 30 }] }
+      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "skedaddle-mcp hook", "timeout": 60, "onFailure": "block" }] }
     ]
   }
 }
 ```
 
+`"onFailure": "block"` (Claude Code 2.1.295+) makes a crashed or timed-out hook block the command instead of letting it
+run; skedaddle itself answers within `SKEDADDLE_HOOK_BUDGET` seconds (default 20) and asks about anything it did not
+finish.
+
 On **block** the agent is denied (the user can still run the command themselves). On **warn** the install proceeds
-and the agent is told why. If the registry cannot be reached, the user is **asked** (set `SKEDADDLE_ON_ERROR=allow`
-or `deny` to change that). Anything skedaddle cannot check is **asked about, never silently allowed**: a git/URL/
+and the agent is told why. If a registry or OSV cannot be reached, the user is **asked** (set
+`SKEDADDLE_ON_ERROR=allow` or `deny` to change that). Anything skedaddle cannot check is **asked about, never silently allowed**: a git/URL/
 tarball source, a custom registry or index (`--registry`, `-i`, `--extra-index-url`, `npm_config_registry`,
 `PIP_INDEX_URL`, `UV_INDEX_URL`, an index line inside a requirements file), or more than 50 packages in one command.
 A bare `npm install` / `npm ci` after the agent edited `package.json` or the lockfile is checked too: dependencies the
@@ -135,8 +139,12 @@ fetches packages — is out of scope. For that, run installs without network acc
 - No tarball-vs-source diff yet (the xz-utils class); `no-git-head` is a weak proxy.
 - Typosquats that sit quietly for months, and long-con maintainers, pass the integrity signals; only OSV catches them
   once reported.
-- The hook parses common install commands (npm, pnpm, yarn, bun, npx/dlx, pip, uv, uvx, pipx). A script that
-  installs packages by other means is not seen.
+- The hook understands: `npm|pnpm|yarn|bun install/add/i/it/ci`, `npm exec|x|create|init`, `npx`, `pnpm|yarn dlx`,
+  `bun x`, `bunx`; `pip`/`pipX.Y`/`python -m pip install`, `uv add`, `uv pip install|sync`, `uv tool install`,
+  `uv run --with`, `uvx`, `pipx install|run|inject`, `poetry add`; `cargo add|install`. Also through `cd`, `sh -c`,
+  `env`, `sudo`, `nice`, `timeout`. Not yet: `uv sync` / `poetry install` from `pyproject.toml`, pnpm/yarn/bun
+  lockfile diffs (only `package-lock.json` is diffed against git HEAD). A script that installs packages by other
+  means is not seen.
 - Thresholds (30-day package age, 3-day release age, 50 downloads) are judgement calls; open an issue with data.
 
 ## Development
