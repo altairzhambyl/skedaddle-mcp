@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "skedaddle-mcp"
+version = "0.1.0"
+description = "MCP server and CLI that checks npm, PyPI and crates.io packages before an AI agent installs them: hallucinated names, malware, exact-version CVEs and signs of a compromised release."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "Altair Zhambyl" }]
+keywords = ["mcp", "supply-chain", "security", "npm", "pypi", "slopsquatting", "ai-agents"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Topic :: Security",
+  "Topic :: Software Development :: Build Tools",
+]
+dependencies = ["mcp>=2.3,<3"]
+
+[project.urls]
+Repository = "https://github.com/altairzhambyl/skedaddle-mcp"
+Issues = "https://github.com/altairzhambyl/skedaddle-mcp/issues"
+
+[project.scripts]
+skedaddle-mcp = "skedaddle_mcp.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.ruff]
+line-length = 130
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

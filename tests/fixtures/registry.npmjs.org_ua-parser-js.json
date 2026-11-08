@@ -1,0 +1,293 @@
+{
+ "dist-tags": {
+  "latest": "0.7.30"
+ },
+ "name": "ua-parser-js",
+ "time": {
+  "0.3.0": "2012-07-28T20:54:44.026Z",
+  "0.3.1": "2012-09-10T20:20:00.942Z",
+  "0.4.0": "2012-09-14T20:57:54.701Z",
+  "0.4.1": "2012-09-17T18:04:46.834Z",
+  "0.4.13": "2012-11-28T08:53:08.175Z",
+  "0.4.15": "2012-12-05T04:16:44.852Z",
+  "0.4.3": "2012-09-21T17:22:56.478Z",
+  "0.4.4": "2012-10-22T09:08:22.907Z",
+  "0.4.6": "2012-11-02T11:32:02.442Z",
+  "0.4.7": "2012-11-06T10:47:25.024Z",
+  "0.5.1": "2013-01-25T13:31:43.684Z",
+  "0.5.11": "2013-02-07T16:28:17.480Z",
+  "0.5.12": "2013-02-15T03:27:50.741Z",
+  "0.5.15": "2013-03-05T14:07:51.010Z",
+  "0.5.2": "2013-01-28T12:25:58.465Z",
+  "0.5.20": "2013-03-16T07:40:04.255Z",
+  "0.5.22": "2013-03-20T05:06:21.724Z",
+  "0.5.23": "2013-03-20T06:07:12.618Z",
+  "0.5.25": "2013-03-22T06:27:07.654Z",
+  "0.5.27": "2013-03-26T07:19:53.728Z",
+  "0.5.3": "2013-02-05T15:37:01.349Z",
+  "0.6.0": "2013-04-04T06:50:31.599Z",
+  "0.6.2": "2013-07-04T12:36:10.667Z",
+  "0.7.0": "2014-06-25T07:47:33.048Z",
+  "0.7.1": "2014-10-19T10:06:38.811Z",
+  "0.7.10": "2015-12-12T12:12:29.429Z",
+  "0.7.11": "2016-11-06T17:39:55.270Z",
+  "0.7.12": "2016-11-14T03:31:33.789Z",
+  "0.7.13": "2017-06-22T07:21:36.408Z",
+  "0.7.14": "2017-07-19T12:47:34.873Z",
+  "0.7.15": "2017-10-12T02:29:39.998Z",
+  "0.7.16": "2017-10-12T05:13:04.568Z",
+  "0.7.17": "2017-10-12T08:18:01.762Z",
+  "0.7.18": "2018-05-04T16:18:07.045Z",
+  "0.7.19": "2018-10-25T18:36:50.279Z",
+  "0.7.20": "2019-06-08T14:53:29.472Z",
+  "0.7.21": "2019-12-19T18:16:14.356Z",
+  "0.7.22": "2020-09-12T09:15:07.793Z",
+  "0.7.23": "2020-12-10T04:19:29.137Z",
+  "0.7.24": "2021-02-12T03:02:48.105Z",
+  "0.7.25": "2021-03-24T09:02:44.830Z",
+  "0.7.26": "2021-03-27T14:35:49.434Z",
+  "0.7.27": "2021-04-02T11:28:17.797Z",
+  "0.7.28": "2021-04-10T14:42:47.159Z",
+  "0.7.29": "2021-10-22T12:15:21.378Z",
+  "0.7.3": "2014-11-09T14:12:36.569Z",
+  "0.7.30": "2021-10-22T16:16:08.807Z",
+  "0.7.31": "2021-10-27T07:02:53.068Z",
+  "0.7.32": "2022-10-15T09:40:09.992Z",
+  "0.7.33": "2023-01-22T15:33:20.167Z",
+  "0.7.34": "2023-03-05T14:21:07.975Z",
+  "0.7.35": "2023-04-01T23:13:09.178Z",
+  "0.7.36": "2023-09-09T13:59:29.197Z",
+  "0.7.37": "2023-10-27T12:47:26.646Z",
+  "0.7.38": "2024-05-28T14:23:45.560Z",
+  "0.7.39": "2024-09-11T13:55:19.323Z",
+  "0.7.4": "2015-04-06T18:58:58.378Z",
+  "0.7.40": "2024-12-21T07:56:57.181Z",
+  "0.7.41": "2025-08-19T12:44:58.278Z",
+  "0.7.6": "2015-04-14T18:42:32.420Z",
+  "0.7.7": "2015-05-01T10:29:49.151Z",
+  "0.7.9": "2015-07-18T21:10:26.295Z",
+  "0.8.0": "2021-10-22T12:16:06.877Z",
+  "0.8.1": "2021-10-22T16:23:53.062Z",
+  "1.0.0": "2021-10-22T12:16:19.726Z",
+  "1.0.1": "2021-10-22T16:26:19.004Z",
+  "1.0.2": "2021-10-27T10:24:04.532Z",
+  "1.0.32": "2022-10-15T09:40:36.992Z",
+  "1.0.33": "2023-01-22T15:32:50.234Z",
+  "1.0.34": "2023-03-05T14:21:20.761Z",
+  "1.0.35": "2023-04-01T23:13:21.362Z",
+  "1.0.36": "2023-09-09T14:02:42.383Z",
+  "1.0.37": "2023-10-27T12:51:13.949Z",
+  "1.0.38": "2024-05-28T14:24:43.180Z",
+  "1.0.39": "2024-09-14T02:35:54.527Z",
+  "1.0.40": "2024-12-21T08:01:56.221Z",
+  "1.0.41": "2025-08-19T12:45:30.307Z",
+  "2.0.0": "2024-11-18T01:27:23.540Z",
+  "2.0.0-alpha.1": "2023-03-29T11:03:42.695Z",
+  "2.0.0-alpha.2": "2023-04-03T01:00:50.062Z",
+  "2.0.0-alpha.3": "2023-08-17T04:44:30.527Z",
+  "2.0.0-beta.1": "2023-10-05T12:44:05.105Z",
+  "2.0.0-beta.2": "2024-02-01T04:28:05.574Z",
+  "2.0.0-beta.3": "2024-06-07T18:23:00.158Z",
+  "2.0.0-rc.1": "2024-10-29T15:38:30.987Z",
+  "2.0.0-rc.2": "2024-11-08T02:54:35.384Z",
+  "2.0.0-rc.3": "2024-11-13T10:59:07.641Z",
+  "2.0.1": "2025-02-04T14:57:01.927Z",
+  "2.0.10": "2026-05-21T06:32:19.841Z",
+  "2.0.2": "2025-02-09T18:00:12.597Z",
+  "2.0.3": "2025-03-14T18:06:56.665Z",
+  "2.0.4": "2025-06-24T03:53:12.129Z",
+  "2.0.5": "2025-09-09T13:56:40.283Z",
+  "2.0.6": "2025-10-10T03:51:52.463Z",
+  "2.0.7": "2025-12-09T06:30:00.031Z",
+  "2.0.8": "2026-01-13T09:15:19.437Z",
+  "2.0.9": "2026-02-03T15:50:07.888Z",
+  "created": "2012-07-28T20:54:42.902Z",
+  "modified": "2026-05-21T06:32:20.139Z"
+ },
+ "versions": {
+  "0.7.24": {
+   "_npmUser": {
+    "email": "fyzlman@gmail.com",
+    "name": "faisalman"
+   },
+   "dependencies": null,
+   "dist": {
+    "fileCount": 18,
+    "integrity": "sha512-yo+miGzQx5gakzVK3QFfN0/L9uVhosXBBO7qmnk7c2iw1IhL212wfA3zbnI54B0obGwC/5NWub/iT9sReMx+Fw==",
+    "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJgJe/YCRA9TVsSAnZWagAAIH4P/RGXliqPW4rSmoH3NpkT\nm7+0w0uzJCACtWubW32ZqQammKnrW3fCjvjLNefXXimxMq5SI+T4cl3BpHyv\n4NGxn6u+Pv0kPU9m0ytUYddWuwqHWVXH9hKww2rg41ZNEg2sT7FOONwvqk8V\nDAABkhiLamMsxMLvYj/gMyUX45OAomQ7eYcbQrCXUGRd3RNbc5AmKar2skin\nESeJ1m6ZAyfaI27pgzfqQMtMMqjZ0TUigTF8Kq7JdtYpidWwKFRoCU2S7YbU\nVz953uF/BedC9M/APhDatPy2IcMyg8NlSc0qFIQl1rLqOt/RSfphiSa988JI\nhvvail4q0tMC6bJEI8chmBVx0TgdNMTlOwplzB8cXjsoiYt8gBiqU1dPhnBR\nK9LULCwtWmW5FaHrzbnNPJ6XikcjCC85nPYvaDiClWPnYfOgIgE0Lv8orZsT\n8H7kJ+Cenv4m7Fuz3lk19guQvlwRGRi+tv5TqwK4f+IXFgJUxZomy1/XpVEB\nYNNBKS4hQRvVaXigyWh5vEeLD4oiTyiauo9NlB+0G/JE+d10s5PonlJ2uA0l\nXr+ATo08m6pMl88RsVnnOx/Q8SSyGC06H9hRb5zG+B5HGf9IPouVLYDcpSdC\n/ppqcxh8TannhwX8QkUznkA/ggUKPxZhJIVBpHuhOOyt2FhsZYcLaBLjC1l9\nMc0i\r\n=lxru\r\n-----END PGP SIGNATURE-----\r\n",
+    "shasum": "8d3ecea46ed4f1f1d63ec25f17d8568105dc027c",
+    "signatures": [
+     {
+      "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+      "sig": "MEUCIAI254SknH/0UDSz2FD91NhoKeYNiaAa1TUL84dbYSutAiEAzhBZGTsYCXmgrPKk8v/d8ecLzoZP0gc7wMEmwp5MYkI="
+     }
+    ],
+    "tarball": "https://registry.npmjs.org/ua-parser-js/-/ua-parser-js-0.7.24.tgz",
+    "unpackedSize": 230712
+   },
+   "gitHead": "9999815ac8c969306594c650566695fba3506830",
+   "name": "ua-parser-js",
+   "scripts": {
+    "build": "uglifyjs src/ua-parser.js -o dist/ua-parser.min.js --comments '/UAParser\\.js/' && uglifyjs src/ua-parser.js -o dist/ua-parser.pack.js --comments '/UAParser\\.js/' --compress --mangle",
+    "test": "jshint src/ua-parser.js && mocha -R nyan test/test.js",
+    "version": "node ./node_modules/verup 0",
+    "verup": "node ./node_modules/verup"
+   },
+   "version": "0.7.24"
+  },
+  "0.7.25": {
+   "_npmUser": {
+    "email": "fyzlman@gmail.com",
+    "name": "faisalman"
+   },
+   "dependencies": null,
+   "dist": {
+    "fileCount": 19,
+    "integrity": "sha512-8NFExdfI24Ny8R3Vc6+uUytP/I7dpqk3JERlvxPWlrtx5YboqCgxAXYKPAifbPLV2zKbgmmPL53ufW7mUC/VOQ==",
+    "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJgWwA1CRA9TVsSAnZWagAAI0IP/1+oUCdieyp2RYwgrNQ7\nahqvGWfy0d571XGBGJ3oQ5l5w6JUepN1x4PTfrk63/RUJHGDi4VJABNZSRkt\nf4l7hOtvMXWgnf7iLO/uJWPZQuPFe19doGZj+XdqCHwkvyAkvUIDemIygDc1\n5WtSOMlU54Oqqn/F9y6bUIzjIaxvmjYkQn4oric8W462AcSoLUpEbklM3MQk\nlZW/r11GeVoeIZtBwvTzZsJI/rwkZglkY6R8KQBcimO6ciw++uL/Hh5i9PWU\npNlYF1ZSvSBa+UO5Rgo8CHekaHBTGymOla7HfKTKBvrhg1W8hcx8PPlnFWtX\nfGGqGWNtT4E7RCkXMDeGwh2otyT7gJv4YDbpXapt1969v+weBGSciE0VOcnj\nC506al9ZZtH+hyCyGy+GNDB89C56GcXlvwDw7XG5Ha0HWyiWTovcE/mQRd4l\nGerN1UpM9BRUhFWbhyOZCfqV06+o8lO0A+0r8MB9D+dvQA1YEmUiPX5oI+dS\n64mQxFR5d/NjPfO5pYwpUs/AbGePKpRTHXr3I5dPaIzIZpZywU6Mdp3dev32\nhaM47FsP5Mr/396NJJkkej6/ikUnwifU35W+iNpEwz7BR1LjAeqThYSL2pIA\nCAg5yLBSc7dBBfOJDTw0qMpkm08+DPWs20EjOnzPh//bgn827+UbZyWcrsuX\nw64d\r\n=GAiN\r\n-----END PGP SIGNATURE-----\r\n",
+    "shasum": "67689fa263a87a52dabbc251ede89891f59156ce",
+    "signatures": [
+     {
+      "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+      "sig": "MEYCIQDKUzPiSvOUNDiQ7aBtZyQ1rUxwNrtvo081VSa8dUprlAIhAKTVCsHR+JDA+gFEAKWJURF7KJFojPjgy1bQYKGoW+Y6"
+     }
+    ],
+    "tarball": "https://registry.npmjs.org/ua-parser-js/-/ua-parser-js-0.7.25.tgz",
+    "unpackedSize": 245552
+   },
+   "gitHead": "3da59cef3d6666de913a0c3056b6fa6378207d60",
+   "name": "ua-parser-js",
+   "scripts": {
+    "build": "uglifyjs src/ua-parser.js -o dist/ua-parser.min.js --comments && uglifyjs src/ua-parser.js -o dist/ua-parser.pack.js --comments --compress --mangle",
+    "test": "jshint src/ua-parser.js && mocha -R nyan test/test.js",
+    "test-ci": "jshint src/ua-parser.js && mocha -R spec test/test.js",
+    "version": "node ./node_modules/verup 0",
+    "verup": "node ./node_modules/verup"
+   },
+   "version": "0.7.25"
+  },
+  "0.7.26": {
+   "_npmUser": {
+    "email": "fyzlman@gmail.com",
+    "name": "faisalman"
+   },
+   "dependencies": null,
+   "dist": {
+    "fileCount": 20,
+    "integrity": "sha512-VwIvGlFNmpKbjzRt51jpbbFTrKIEgGHxIwA8Y69K1Bqc6bTIV7TaGGABOkghSFQWsLmcRB4drGvpfv9z2szqoQ==",
+    "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJgX0LFCRA9TVsSAnZWagAAtpYP/AwY57s8dyNfGTzCUjVh\nyjvtxTWIM3dt3NH+PG6w1helIyTDEJnNqnvH3EodTAR39hlW3mq5nzsfc330\nuEkY5h+vcfIya0Hm9gj/lv14Zl6CDx5hJhL15AqtNwmoSdJVp0wjTarTYLgQ\nreJP2bwOgsZ+Hpj5/sV06GAbar6Z79zks+7/BbQPHVhVXltFgDShQb5jVSpF\nLdzsIajR/dF021ZOTplEj5WQM7YpmRi0Piv+W1cfDyJOtBk7KciydljwK3lK\nC6XNtver0h6g8S6W2IfWeuTsr59JnVkMn/1ZvtmZGm4Nbn7Jed/WTDB+zl7y\niz/JBp9prke0V48vzgknLhzLUEm+cuqyPrsX3qdu2UMx4f9rcw8arnhO58pL\n9Ot3GqCnot/puf7AxyrF2ivRW6R+7up7TToZu4yQr/iD3fyKZ/+6AXDOAmLI\nV2IhUGtjwPnLv/RQHUVHopS81BsrN4uLB4BptniGRxUfy4KIxfluTF6prjLM\np+2gxJCSyk6FsEf50z3pf4u83uKQraExKWl2oITtOSEFht661zRBgNqodwxS\nv3r6IqEFT9aeRm2cvO0Qzv6CVCGatGGox7MLYqh0i6Dy5dZuJWDT9sVZqgo7\npkqmUqFAhVZEb3LEI/tSmx2R/7kKSyz/pQ7WpGHT93iUhLOxDBDM6fM5EBZ/\nE5jQ\r\n=CalA\r\n-----END PGP SIGNATURE-----\r\n",
+    "shasum": "b3731860e241419abd5b542b1a0881070d92e0ce",
+    "signatures": [
+     {
+      "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+      "sig": "MEQCIF67WG1imsuoF2pT2whEOws0qArA77H6qqHTN10EU0N0AiBtsQNTtHIZeXTr5muMns5DpxaKrluGPsljN5mqyeX2ew=="
+     }
+    ],
+    "tarball": "https://registry.npmjs.org/ua-parser-js/-/ua-parser-js-0.7.26.tgz",
+    "unpackedSize": 289129
+   },
+   "gitHead": "a6b0c165c4882b62c430284f77cbd231c497d892",
+   "name": "ua-parser-js",
+   "scripts": {
+    "build": "uglifyjs src/ua-parser.js -o dist/ua-parser.min.js --comments && uglifyjs src/ua-parser.js -o dist/ua-parser.pack.js --comments --compress --mangle",
+    "test": "jshint src/ua-parser.js && mocha -R nyan test/test.js",
+    "test-ci": "jshint src/ua-parser.js && mocha -R spec test/test.js",
+    "version": "node ./node_modules/verup 0",
+    "verup": "node ./node_modules/verup"
+   },
+   "version": "0.7.26"
+  },
+  "0.7.27": {
+   "_npmUser": {
+    "email": "fyzlman@gmail.com",
+    "name": "faisalman"
+   },
+   "dependencies": null,
+   "dist": {
+    "fileCount": 20,
+    "integrity": "sha512-eXMaRYK2skomGocoX0x9sBXzx5A1ZVQgXfrW4mTc8dT0zS7olEcyfudAzRC5tIIRgLxQ69B6jut3DI+n5hslPA==",
+    "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJgZv/SCRA9TVsSAnZWagAABPUP/iwMWgIlh70HoTFg8Ho4\nt3sfpuKFdsPOO+TKlOd9Fv06UuKTGYyLGZR6CcnayqIeDgUw88czBmyYALtA\ngnRGNMWuNVrGHc2kuuJXxn3/1E2+EQuGBr5WT3k7svAob4x4XSq3r+iboys5\n1xf0ttbfbaYQ/fCzTcKe2PNkictKMqhu9y3ecZhSuu/Idx/9/yIyp3V1bdnL\nlCLQW6glJ9OQTYdvkWEj2mQTslylcA8RPxexwD0eHIDDOQNeIGkTx24+RPh2\nqSFXj0KPBL9k4gTPl2Kdgjx2TzeSTC8MeV9cJEuqu2HdeWlWgJegv8dYg87w\n283lIXdxT0EkohagldNT/RrcNveWcti/Z+9LSTnGkIV1vodjvi4sNpMYsI3u\nCWu6W4LPTCZje3ffsVGGFhF4wEJ9TP5RceDRWEtJGVg/ghCZOr+R/az+iMff\ntqpF5qvn+PunuUSFW96GfcAs72kHeuHs4EioEr+zsvCbgUfBidA+dyWVkfsC\ni6neIIxR2oeClbzyTnyDiw+yywTwUV1twIPnctrucGFS86gG8AO13k7kxp8I\np/1YujFjtkPOYdbf7ZGDSr4EnvrN6QPCOeoEG1X4FczmTdDAhNpeQucwY2un\nY4tIpYY0rBkZAUPbK8gtVz0nbSshIVa7F7nc8+N5LX/BtLUpGIF0ZYvR5PoC\n1jCV\r\n=V1Sv\r\n-----END PGP SIGNATURE-----\r\n",
+    "shasum": "b54f8ce9eb6c7abf3584edeaf9a3d8b3bd92edba",
+    "signatures": [
+     {
+      "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+      "sig": "MEQCIAIAwxKiztDEsopMkCTm0NWkS/VZNM+vfseDLFupaw8bAiA24Xrzg7nOrPg0JtIcHw0qcc0tQpFjWRyaLX5yIf9/4A=="
+     }
+    ],
+    "tarball": "https://registry.npmjs.org/ua-parser-js/-/ua-parser-js-0.7.27.tgz",
+    "unpackedSize": 294854
+   },
+   "gitHead": "f95aced43b1879bc03fe198a80bcd3d3f3750d86",
+   "name": "ua-parser-js",
+   "scripts": {
+    "build": "uglifyjs src/ua-parser.js -o dist/ua-parser.min.js --comments && uglifyjs src/ua-parser.js -o dist/ua-parser.pack.js --comments --compress --mangle",
+    "test": "jshint src/ua-parser.js && mocha -R nyan test/test.js",
+    "test-ci": "jshint src/ua-parser.js && mocha -R spec test/test.js",
+    "version": "node ./node_modules/verup 0",
+    "verup": "node ./node_modules/verup"
+   },
+   "version": "0.7.27"
+  },
+  "0.7.28": {
+   "_npmUser": {
+    "email": "fyzlman@gmail.com",
+    "name": "faisalman"
+   },
+   "dependencies": null,
+   "dist": {
+    "fileCount": 20,
+    "integrity": "sha512-6Gurc1n//gjp9eQNXjD9O3M/sMwVtN5S8Lv9bvOYBfKfDNiIIhqiyi01vMBO45u4zkDE420w/e0se7Vs+sIg+g==",
+    "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.13\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJgcblnCRA9TVsSAnZWagAAwyUP/3LLh+LA04aV2iZC4SO9\nWo0nYYmFmTQawibIw190mmryrGUnIozSs3nitAs1SqANdnFRzUOZ50G9bbYu\nhzzV6Thix8yFK75XvvEuG8QZk9rgff2JOztpOLRvmvTwbd9O7GAAKH2RT1Wl\nm6nJIzGG1MudHaPB5TvaigMacpByFsAKbK/vWwNjPIdhtNsD/L1C+Bi/IlMO\nuX8piwiepP5P34RRrvJe1epMoLqY0HzXYqKaodz50pro4KqfiPfHDmYgOJ85\nOUNaAYCE63sLL4F/Tiv68ArITiccQ0MYyGtttE+HHnEalHhSUxXFlh4OHYyo\n+v58Wku39Er0Oz57i3E/b0KEL+4VM/W95gj9PZN2lhgCslwhKOUNb+aBe1RP\n+wWW3jhL3ZBfWdlyiYf+PSZXz2Fx3dNjgyEUqcg+kkPYmmOXSNf8GpNsTiC5\n9CVUxs8GOtJ34BRpE5AEXUQMuv2KFncFQkzHwf9c2CFsO5Dcmr0j2i5j50RH\nrFh6NmgPpK+JHSVSeTXEyA0Smm23mPzr8wgVYj8JYHJHbobn2cH0eW17D+o7\nPGGaQRA9rXiDJ/V9CXQMPZ8bgiLANNvCpZ/6L7AnzHPduIj1mOMS8eESdwXR\nhkpVtw4epda9hQWSOCUUftMrw9frUzAbkZHTHB7dy359GhUfSP8jpi7CuhCr\nQH/m\r\n=IqeL\r\n-----END PGP SIGNATURE-----\r\n",
+    "shasum": "8ba04e653f35ce210239c64661685bf9121dec31",
+    "signatures": [
+     {
+      "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+      "sig": "MEUCIQDY69DQ8QI4FOM9elMnPVwllvKQrMrlHXX1f8sOqHAxNgIgMiw403EE75npA20+/F4CsOh8CxE0+4pZtDoLwRA+wcQ="
+     }
+    ],
+    "tarball": "https://registry.npmjs.org/ua-parser-js/-/ua-parser-js-0.7.28.tgz",
+    "unpackedSize": 300519
+   },
+   "gitHead": "1d3c98a10c23915046a362c4e3b3b503fb40d611",
+   "name": "ua-parser-js",
+   "scripts": {
+    "build": "uglifyjs src/ua-parser.js -o dist/ua-parser.min.js --comments && uglifyjs src/ua-parser.js -o dist/ua-parser.pack.js --comments --compress --mangle",
+    "test": "jshint src/ua-parser.js && mocha -R nyan test/test.js",
+    "test-ci": "jshint src/ua-parser.js && mocha -R spec test/test.js",
+    "version": "node ./node_modules/verup 0",
+    "verup": "node ./node_modules/verup"
+   },
+   "version": "0.7.28"
+  },
+  "0.7.30": {
+   "_npmUser": {
+    "email": "fyzlman@gmail.com",
+    "name": "faisalman"
+   },
+   "dependencies": null,
+   "dist": {
+    "fileCount": 22,
+    "integrity": "sha512-uXEtSresNUlXQ1QL4/3dQORcGv7+J2ookOG2ybA/ga9+HYEXueT2o+8dUJQkpedsyTyCJ6jCCirRcKtdtx1kbg==",
+    "shasum": "4cf5170e8b55ac553fe8b38df3a82f0669671f0b",
+    "signatures": [
+     {
+      "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
+      "sig": "MEYCIQCo90QnqqKvhe4AyJ5n2iiiI5VYXs7aMXtBiD9efWwRwQIhANwuqN265hXfoAIkwZbuAFSBvtlNg63VHry1GTHCaehA"
+     }
+    ],
+    "tarball": "https://registry.npmjs.org/ua-parser-js/-/ua-parser-js-0.7.30.tgz",
+    "unpackedSize": 327144
+   },
+   "gitHead": "139fbc321a36ff663aac471a61d109728ac17f0b",
+   "name": "ua-parser-js",
+   "scripts": {
+    "build": "uglifyjs src/ua-parser.js -o dist/ua-parser.min.js --comments '/^ UA/' && uglifyjs src/ua-parser.js -o dist/ua-parser.pack.js --comments '/^ UA/' --compress --mangle",
+    "test": "jshint src/ua-parser.js && mocha -R nyan test/test.js",
+    "test-ci": "jshint src/ua-parser.js && mocha -R spec test/test.js",
+    "version": "node ./node_modules/verup 0",
+    "verup": "node ./node_modules/verup"
+   },
+   "version": "0.7.30"
+  }
+ }
+}

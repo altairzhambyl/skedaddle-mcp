@@ -1,0 +1,51 @@
+{
+ "vulns": [
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "event-stream",
+      "purl": "pkg:npm/event-stream"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "3.3.6"
+        },
+        {
+         "fixed": "4.0.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "flatmap-stream",
+      "purl": "pkg:npm/flatmap-stream"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": null,
+   "database_specific": {
+    "severity": "CRITICAL"
+   },
+   "id": "GHSA-mh6f-8j2x-4483",
+   "summary": "Critical severity vulnerability that affects event-stream and flatmap-stream"
+  }
+ ]
+}

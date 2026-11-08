@@ -1,0 +1,136 @@
+{
+ "vulns": [
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "PyPI",
+      "name": "requests",
+      "purl": "pkg:pypi/requests"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "2.32.4"
+        }
+       ],
+       "type": "ECOSYSTEM"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2024-47081",
+    "PYSEC-2026-1872"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-9hjg-9r4m-mvj7",
+   "summary": "Requests vulnerable to .netrc credentials leak via malicious URLs"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "PyPI",
+      "name": "requests",
+      "purl": "pkg:pypi/requests"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "2.33.0"
+        }
+       ],
+       "type": "ECOSYSTEM"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-25645",
+    "PYSEC-2026-2275"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-gc5v-m9x4-r6x2",
+   "summary": "Requests has Insecure Temp File Reuse in its extract_zipped_paths() utility function"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "PyPI",
+      "name": "requests",
+      "purl": "pkg:pypi/requests"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "2.32.4"
+        }
+       ],
+       "type": "ECOSYSTEM"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2024-47081",
+    "GHSA-9hjg-9r4m-mvj7"
+   ],
+   "database_specific": {
+    "severity": null
+   },
+   "id": "PYSEC-2026-1872",
+   "summary": "Requests vulnerable to .netrc credentials leak via malicious URLs"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "PyPI",
+      "name": "requests",
+      "purl": "pkg:pypi/requests"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "2.33.0"
+        }
+       ],
+       "type": "ECOSYSTEM"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-25645",
+    "GHSA-gc5v-m9x4-r6x2"
+   ],
+   "database_specific": {
+    "severity": null
+   },
+   "id": "PYSEC-2026-2275",
+   "summary": null
+  }
+ ]
+}

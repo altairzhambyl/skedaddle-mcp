@@ -1,0 +1,36 @@
+{
+ "vulns": [
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "crossenv",
+      "purl": "pkg:npm/crossenv"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "last_affected": "1.0.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2017-16074"
+   ],
+   "database_specific": {
+    "severity": "HIGH"
+   },
+   "id": "GHSA-c2m4-w5hm-vqjw",
+   "summary": "crossenv is malware"
+  }
+ ]
+}

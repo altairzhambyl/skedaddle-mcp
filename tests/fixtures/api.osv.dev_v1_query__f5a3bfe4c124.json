@@ -1,0 +1,1532 @@
+{
+ "vulns": [
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.16.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-44494"
+   ],
+   "database_specific": {
+    "severity": "HIGH"
+   },
+   "id": "GHSA-35jp-ww65-95wh",
+   "summary": "axios Vulnerable to Full Man-in-the-Middle via Prototype Pollution Gadget in `config.proxy`"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.15.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0.19.0"
+        },
+        {
+         "fixed": "0.31.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-44495"
+   ],
+   "database_specific": {
+    "severity": "HIGH"
+   },
+   "id": "GHSA-3g43-6gmg-66jw",
+   "summary": "axios Vulnerable to Credential Theft and Response Hijacking via Prototype Pollution Gadget in Config Merge"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.15.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.31.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2025-62718"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-3p68-rc4w-qgx5",
+   "summary": "Axios has a NO_PROXY Hostname Normalization Bypass that Leads to SSRF"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.13.0"
+        },
+        {
+         "fixed": "1.20.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-101898"
+   ],
+   "database_specific": {
+    "severity": "HIGH"
+   },
+   "id": "GHSA-3pq3-5fj3-cg6v",
+   "summary": "Axios: HTTP/2 adapter bypasses configured DNS lookup and proxy controls"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.15.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-42044"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-3w6x-2g7m-8v23",
+   "summary": "Axios: Invisible JSON Response Tampering via Prototype Pollution Gadget in `parseReviver`"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0.28.0"
+        },
+        {
+         "fixed": "0.33.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.18.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-67313"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-42h9-826w-cgv3",
+   "summary": "Axios: Excessive recursion in formDataToJSON can cause denial of service"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.15.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-42037"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-445q-vr5w-6q77",
+   "summary": "Axios: CRLF Injection in multipart/form-data body via unsanitized blob.type in formDataToStream"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.12.0"
+        },
+        {
+         "fixed": "1.20.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-101900"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-4hqw-qxg8-jxx2",
+   "summary": "Axios: Fetch Adapter Header Injection via Inherited FormData getHeaders"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.13.0"
+        },
+        {
+         "fixed": "1.20.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-101901"
+   ],
+   "database_specific": {
+    "severity": "HIGH"
+   },
+   "id": "GHSA-542g-h47m-68v8",
+   "summary": "Axios: Denial of Service via Unhandled 'error' Event in HTTP/2 ClientHttp2Session Initialization"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.15.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.31.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-42034"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-5c9x-8gcm-mpgx",
+   "summary": "Axios' HTTP adapter-streamed uploads bypass maxBodyLength when maxRedirects: 0"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.15.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.31.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-42039"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-62hf-57xw-28j9",
+   "summary": "Axios: unbounded recursion in toFormData causes DoS via deeply nested request data"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.15.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.31.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-42035"
+   ],
+   "database_specific": {
+    "severity": "HIGH"
+   },
+   "id": "GHSA-6chq-wfr3-2hj9",
+   "summary": "Axios: Header Injection via Prototype Pollution"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.7.0"
+        },
+        {
+         "fixed": "1.16.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-44488"
+   ],
+   "database_specific": {
+    "severity": "HIGH"
+   },
+   "id": "GHSA-777c-7fjr-54vf",
+   "summary": "Allocation of Resources Without Limits or Throttling in Axios"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0.8.0"
+        },
+        {
+         "fixed": "0.33.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.18.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-67319"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-7q8q-rj6j-mhjq",
+   "summary": "Axios: Nested axios option objects can consume polluted prototype values"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.16.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.32.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-44490"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-898c-q2cr-xwhg",
+   "summary": "axios has DoS & Header Injection via Prototype Pollution Read-Side Gadgets in axios merge functions"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0.27.2"
+        },
+        {
+         "fixed": "0.34.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.20.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-101902"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-9fr6-4gfg-395g",
+   "summary": "Axios: Prototype-Pollution Gadget in the Default Instance Allows Inherited Object.prototype.method to Override HTTP Method"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.15.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.31.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-40175"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-fvcv-3m26-pcqx",
+   "summary": "Axios has Unrestricted Cloud Metadata Exfiltration via Header Injection Chain"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.16.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.32.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-44496"
+   ],
+   "database_specific": {
+    "severity": "HIGH"
+   },
+   "id": "GHSA-hfxv-24rg-xrqf",
+   "summary": "Axios: Regular Expression Denial of Service (ReDoS) via Cookie Name Injection"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.16.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.32.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-44486"
+   ],
+   "database_specific": {
+    "severity": "HIGH"
+   },
+   "id": "GHSA-j5f8-grm9-p9fc",
+   "summary": "Axios: Proxy-Authorization header leaks to redirect target when proxy is re-evaluated to direct connection"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.20.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-101904"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-j8rh-479h-cp32",
+   "summary": "Axios: Header Injection via Inherited headers After Minimal Interceptor"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.7.0"
+        },
+        {
+         "fixed": "1.18.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-67317"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-jqh4-m9w3-8hp9",
+   "summary": "Axios: Fetch adapter `ReadableStream` uploads bypass `maxBodyLength`"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.15.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.31.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-42038"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-m7pr-hjqh-92cm",
+   "summary": "Axios: no_proxy bypass via IP alias allows SSRF"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.18.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.33.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-67316"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-mmx7-hfxf-jppx",
+   "summary": "Axios: Prototype pollution gadgets can alter axios request construction"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.13.0"
+        },
+        {
+         "fixed": "1.18.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-67318"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-mwf2-3pr3-8698",
+   "summary": "Axios: HTTP/2 streamed uploads bypass `maxBodyLength`"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.16.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.32.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-44487"
+   ],
+   "database_specific": {
+    "severity": "HIGH"
+   },
+   "id": "GHSA-p92q-9vqr-4j8v",
+   "summary": "Axios: Proxy-Authorization Credential Leak to Origin Server Across HTTP-to-HTTPS Redirect in Axios Node.js HTTP Adapter"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.15.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.31.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-42033"
+   ],
+   "database_specific": {
+    "severity": "HIGH"
+   },
+   "id": "GHSA-pf86-5x62-jrwf",
+   "summary": "Axios: Prototype Pollution Gadgets - Response Tampering, Data Exfiltration, and Request Hijacking"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0.28.0"
+        },
+        {
+         "fixed": "0.33.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.18.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-67312"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-pmv8-rq9r-6j72",
+   "summary": "Axios: Deep formToJSON Key Recursion Can Cause Denial of Service"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.15.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.31.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-42043"
+   ],
+   "database_specific": {
+    "severity": "HIGH"
+   },
+   "id": "GHSA-pmwg-cvhr-8vh7",
+   "summary": "Axios: Incomplete Fix for CVE-2025-62718 \u2014 NO_PROXY Protection Bypassed via RFC 1122 Loopback Subnet (127.0.0.0/8) in Axios 1.15.0"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.15.2"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-42264"
+   ],
+   "database_specific": {
+    "severity": "HIGH"
+   },
+   "id": "GHSA-q8qp-cvcw-x6jj",
+   "summary": "Axios has prototype pollution read-side gadgets in HTTP adapter that allow credential injection and request hijacking"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.15.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.31.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-42036"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-vf2m-468p-8v99",
+   "summary": "Axios: HTTP adapter streamed responses bypass maxContentLength"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.7.0"
+        },
+        {
+         "fixed": "1.20.0"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-101908"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-vh66-26gq-q6x8",
+   "summary": "Axios: Prototype pollution gadget in fetch adapter can alter outbound requests"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.15.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.31.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-42041"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-w9j2-pvgh-6h63",
+   "summary": "Axios: Authentication Bypass via Prototype Pollution Gadget in `validateStatus` Merge Strategy"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.15.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.31.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-42040"
+   ],
+   "database_specific": {
+    "severity": "LOW"
+   },
+   "id": "GHSA-xhjh-pmcv-23jw",
+   "summary": "Axios: Null Byte Injection via Reverse-Encoding in AxiosURLSearchParams"
+  },
+  {
+   "affected": [
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "1.0.0"
+        },
+        {
+         "fixed": "1.15.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    },
+    {
+     "package": {
+      "ecosystem": "npm",
+      "name": "axios",
+      "purl": "pkg:npm/axios"
+     },
+     "ranges": [
+      {
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.31.1"
+        }
+       ],
+       "type": "SEMVER"
+      }
+     ]
+    }
+   ],
+   "aliases": [
+    "CVE-2026-42042"
+   ],
+   "database_specific": {
+    "severity": "MODERATE"
+   },
+   "id": "GHSA-xx6v-rp6x-q39c",
+   "summary": "Axios: XSRF Token Cross-Origin Leakage via Prototype Pollution Gadget in `withXSRFToken` Boolean Coercion"
+  }
+ ]
+}
