@@ -75,3 +75,96 @@ def test_decide_asks_when_unverifiable(registry, tmp_path, monkeypatch):
     monkeypatch.setattr(core, "get_json", lambda *a, **k: (_ for _ in ()).throw(FetchError("offline")))
     out = decide("npm install anything", str(tmp_path))
     assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+
+def test_hook_crash_asks_instead_of_allowing(monkeypatch, capsys):
+    import io
+
+    from skedaddle_mcp import hook
+
+    def boom(*a, **k):
+        raise RuntimeError("unexpected")
+
+    monkeypatch.setattr(hook, "decide", boom)
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"tool_name": "Bash", "tool_input": {"command": "npm i x"}})))
+    assert hook.main() == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+
+# ---- review of 8605b68: nothing unverifiable may pass silently ---------------------------------------------------
+def _asks(cmd, cwd, env=None):
+    from skedaddle_mcp.hook import plan
+
+    return plan(cmd, cwd, env or {})[1]
+
+
+def test_alias_checks_the_real_package(tmp_path):
+    from skedaddle_mcp.hook import plan
+
+    assert plan("npm install lodash@npm:evil-pkg@1.0.0", str(tmp_path), {})[0] == [("npm", "evil-pkg@1.0.0")]
+
+
+def test_git_url_and_custom_registries_ask(tmp_path):
+    cwd = str(tmp_path)
+    for cmd in ("npm install user/repo", "npm install github:user/repo", "npm i https://x.test/p.tgz",
+                "pip install git+https://github.com/x/y", "pip install https://x.test/p.whl",
+                "npm install axios --registry https://evil.test", "pip install requests -i https://evil.test/simple",
+                "uv pip install requests --extra-index-url https://evil.test"):
+        assert _asks(cmd, cwd), cmd
+    assert _asks("npm install axios", cwd, {"npm_config_registry": "https://evil.test"})
+    assert _asks("pip install requests", cwd, {"PIP_INDEX_URL": "https://evil.test"})
+
+
+def test_per_manager_flags(tmp_path):
+    from skedaddle_mcp.hook import plan
+
+    cwd = str(tmp_path)
+    assert plan("npm install -e axios", cwd, {})[0] == [("npm", "axios")]  # npm has no -e value flag
+    assert plan("pnpm add -w lodash", cwd, {})[0] == [("npm", "lodash")]  # pnpm -w is boolean
+    assert plan("pip install -e . requests", cwd, {})[0] == [("pypi", "requests")]
+    assert plan("npm exec -- cowsay hi", cwd, {})[0] == [("npm", "cowsay")]
+    assert plan("npm create vite@5.0.0", cwd, {})[0] == [("npm", "create-vite@5.0.0")]
+    assert plan("npm it left-pad", cwd, {})[0] == [("npm", "left-pad")]
+    assert plan("sudo -u node npm i left-pad", cwd, {})[0] == [("npm", "left-pad")]
+    assert plan("bash -c 'npm i left-pad'", cwd, {})[0] == [("npm", "left-pad")]
+
+
+def test_cd_changes_the_manifest_dir(tmp_path):
+    from skedaddle_mcp.hook import plan
+
+    sub = tmp_path / "web"
+    sub.mkdir()
+    (sub / "package.json").write_text(json.dumps({"dependencies": {"new-dep": "1.0.0"}}))
+    assert plan("cd web && npm install", str(tmp_path), {})[0] == [("npm", "new-dep@1.0.0")]
+
+
+def test_too_many_targets_ask(tmp_path):
+    assert _asks("npm i " + " ".join(f"p{i}" for i in range(80)), str(tmp_path))
+
+
+def test_requirements_includes_and_index_lines(tmp_path):
+    from skedaddle_mcp.hook import plan
+
+    (tmp_path / "base.txt").write_text("flask==3.0.0\n")
+    (tmp_path / "req.txt").write_text("-r base.txt\nrequests==2.32.3\n")
+    assert sorted(plan("pip install -r req.txt", str(tmp_path), {})[0]) == [("pypi", "flask==3.0.0"), ("pypi", "requests==2.32.3")]
+    (tmp_path / "evil.txt").write_text("--index-url https://evil.test/simple\nrequests\n")
+    assert _asks("pip install -r evil.txt", str(tmp_path))
+
+
+def test_lockfile_entries_changed_since_head_are_checked(tmp_path):
+    import subprocess
+
+    from skedaddle_mcp.hook import plan
+
+    g = lambda *a: subprocess.run(["git", "-C", str(tmp_path), *a], check=True, capture_output=True)
+    g("init", "-q")
+    (tmp_path / "package.json").write_text(json.dumps({"dependencies": {"axios": "^1.0.0"}}))
+    lock = {"packages": {"node_modules/axios": {"version": "1.15.2"}}}
+    (tmp_path / "package-lock.json").write_text(json.dumps(lock))
+    g("add", "-A")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base")
+    lock["packages"]["node_modules/axios"]["version"] = "1.14.1"  # the agent edits the lockfile directly
+    (tmp_path / "package-lock.json").write_text(json.dumps(lock))
+    assert plan("npm ci", str(tmp_path), {})[0] == [("npm", "axios@1.14.1")]

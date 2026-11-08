@@ -203,9 +203,16 @@ def npm_findings(rep: Report, name: str, version: str | None) -> str | None:
     meta = versions.get(version) or {}
     if re.search(r"-security(\.\d+)?$", version) and _npm_publisher(meta) == "npm":
         # npm replaces a package removed for malware with a "0.0.x-security" placeholder published by npm itself
-        rep.add(Finding("security-placeholder", "block",
-                        f"{name} was taken down by npm for security reasons (its latest version {version} is npm's placeholder); "
-                        "the name was used for malware", {"version": version}, url))
+        rep.add(
+            Finding(
+                "security-placeholder",
+                "block",
+                f"{name} was taken down by npm for security reasons (its latest version {version} is npm's placeholder); "
+                "the name was used for malware",
+                {"version": version},
+                url,
+            )
+        )
         return version
     hooks = {k: meta["scripts"][k] for k in INSTALL_HOOKS if k in (meta.get("scripts") or {})}
     rel_age = _age_days(times.get(version))
@@ -532,8 +539,17 @@ SPEC_RX = {
 
 def parse_spec(ecosystem: str, spec: str) -> tuple[str, str | None]:
     """'axios@1.15.0' / 'requests==2.32.3' / 'serde@1.0.0' -> (name, exact version or None). Ranges are not exact."""
+    spec = spec.strip()
+    if ecosystem.lower() == "npm":
+        alias = re.match(r"^(@?[^@]+)@npm:(.+)$", spec)  # x@npm:real@1.0.0 installs `real`: check that
+        if alias:
+            spec = alias[2]
+    if re.match(r"^(git(\+[a-z]+)?:|[a-z]+\+https?:|https?:|github:|gitlab:|bitbucket:|file:|link:)", spec) or re.search(
+        r"@(git(\+[a-z]+)?:|https?:|github:|file:)", spec
+    ):
+        raise ValueError(f"{spec!r} is a git/URL/file source, not a registry package: it cannot be checked")
     rx = SPEC_RX.get("crates" if ecosystem.lower() == "cargo" else ecosystem.lower())
-    m = rx.match(spec.strip()) if rx else None
+    m = rx.match(spec) if rx else None
     if not m:
         raise ValueError(f"cannot parse {ecosystem} package spec {spec!r}")
     ver = m["version"]

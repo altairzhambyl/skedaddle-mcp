@@ -150,3 +150,12 @@ def test_new_publisher_on_a_major_bump_is_info(registry):
     registry("https://registry.npmjs.org/pkg-f", npm_doc("pkg-f", rel))
     rep = check_package("npm", "pkg-f", "7.0.2")
     assert rep.verdict == "allow" and "new-publisher" in signals(rep, "info")
+
+
+def test_parse_spec_alias_and_unverifiable_sources():
+    import pytest
+
+    assert parse_spec("npm", "lodash@npm:evil-pkg@1.0.0") == ("evil-pkg", "1.0.0")
+    for s in ("x@github:user/repo", "git+https://github.com/x/y", "https://x.test/p.tgz", "x@file:../p"):
+        with pytest.raises(ValueError):
+            parse_spec("npm", s)

@@ -61,8 +61,12 @@ An MCP tool is advisory: the model may not call it. A hook runs on every shell c
 
 On **block** the agent is denied (the user can still run the command themselves). On **warn** the install proceeds
 and the agent is told why. If the registry cannot be reached, the user is **asked** (set `SKEDADDLE_ON_ERROR=allow`
-or `deny` to change that). A bare `npm install` after the agent edited `package.json` is checked too: every
-dependency the lockfile does not pin yet.
+or `deny` to change that). Anything skedaddle cannot check is **asked about, never silently allowed**: a git/URL/
+tarball source, a custom registry or index (`--registry`, `-i`, `--extra-index-url`, `npm_config_registry`,
+`PIP_INDEX_URL`, `UV_INDEX_URL`, an index line inside a requirements file), or more than 50 packages in one command.
+A bare `npm install` / `npm ci` after the agent edited `package.json` or the lockfile is checked too: dependencies the
+lockfile does not pin yet, and lockfile entries that changed since git HEAD. `npm:` aliases are checked as the real
+package; `cd dir && ...` and `sh -c '...'` are followed.
 
 ### As an MCP server (any MCP client)
 
