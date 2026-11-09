@@ -33,3 +33,12 @@ def test_heredoc_data_only_when_it_is_the_whole_command(tmp_path):
                 "cat > ~/.bashrc <<EOF\nnpm i zzq-evil\nEOF", "cat > .git/hooks/pre-commit <<EOF\nnpm i zzq-evil\nEOF",
                 "cat > Makefile <<EOF\nnpm i zzq-evil\nEOF", "cat > \"$F\" <<EOF\nnpm i zzq-evil\nEOF"):
         assert ("npm", "zzq-evil") in plan(cmd, str(tmp_path), {})[0], cmd
+
+
+def test_heredoc_target_allowlist_and_plain_line_only(tmp_path):
+    """review of 6382c12: only plain data files are inert; anything else (yaml CI, unknown extensions) keeps the body."""
+    for cmd in ("cat > .github/workflows/ci.yml <<EOF\nnpm i zzq-evil\nEOF", "cat > run <<EOF\nnpm i zzq-evil\nEOF",
+                "cat > notes.md <<EOF # x\nnpm i zzq-evil\nEOF", 'cat > "a b.md" <<EOF\nnpm i zzq-evil\nEOF',
+                "cat > .mcp.json <<EOF\nnpm i zzq-evil\nEOF", "cat > package.json <<EOF\nnpm i zzq-evil\nEOF"):
+        assert ("npm", "zzq-evil") in plan(cmd, str(tmp_path), {})[0], cmd
+    assert plan("cat > notes.md <<'EOF'\nnpm i zzq-evil\nEOF", str(tmp_path), {}) == ([], [])  # plain notes stay quiet

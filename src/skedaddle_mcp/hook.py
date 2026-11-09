@@ -324,8 +324,9 @@ HEREDOC = re.compile(r"<<(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
 DATA_SINKS = re.compile(r"^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(cat|tee)\b")
 
 
-SENSITIVE_TARGET = re.compile(r"(^|/)(\.(bash|zsh|profile|bash_profile|zprofile|zshenv)rc?|\.profile|Makefile|makefile|"
-                              r"package\.json|pyproject\.toml|setup\.py|[^/]*\.(sh|bash|zsh|py|js|mjs|cjs|ts|ps1))$|\.git/hooks/")
+DATA_FILE = re.compile(r"\.(md|markdown|txt|rst|csv|tsv|log|json)$", re.IGNORECASE)
+NOT_DATA = re.compile(r"(^|/)(package\.json|composer\.json|\.mcp\.json|tsconfig[^/]*\.json|settings[^/]*\.json|tasks\.json|"
+                      r"launch\.json|devcontainer\.json)$|(^|/)\.(claude|cursor|vscode|codex|git|github)/", re.IGNORECASE)
 
 
 def _strip_heredocs(command: str) -> str:
@@ -339,8 +340,8 @@ def _strip_heredocs(command: str) -> str:
     if not m or "<<<" in first or "\\\n" in command or not DATA_SINKS.match(first):
         return command
     head = HEREDOC.sub("", first)
-    if re.search(r"[|;&`]|\$", head):
-        return command
+    if re.search(r"[|;&`#\\'\"]|\$", head):
+        return command  # quotes, comments, escapes: the tokenization is ambiguous, so the body is checked
     dash, delim = bool(m[1]), m[3]
     end = next((k for k, ln in enumerate(lines[1:], 1) if (ln.lstrip("\t") if dash else ln) == delim), None)
     if end is None or any(ln.strip() for ln in lines[end + 1:]):
@@ -354,8 +355,8 @@ def _strip_heredocs(command: str) -> str:
     if os.path.basename(words[0]) == "tee":
         targets += [w for w in words[1:] if not w.startswith("-") and not w.startswith(">")]
     targets = [t for t in targets if t != "/dev/null"]
-    if not targets or any(SENSITIVE_TARGET.search(t) for t in targets):
-        return command
+    if not targets or not all(DATA_FILE.search(t) and not NOT_DATA.search(t) for t in targets):
+        return command  # only plain data files are inert (allowlist; review of 6382c12)
     return first  # the body is text written to a file
 
 
