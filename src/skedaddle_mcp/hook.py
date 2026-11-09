@@ -227,23 +227,14 @@ def _words(seg: str) -> list[str]:
 SHELL_VALUE_OPTS = {"-o", "+o", "-O", "+O", "--rcfile", "--init-file"}
 
 
-def _shell_command(args: list[str]) -> str | None:
-    """The command string of `sh -c CMD` / `bash -lc CMD` / `bash -o pipefail -c CMD`; None if not a -c invocation."""
-    has_c, i = False, 0
-    while i < len(args):
-        a = args[i]
-        if a in SHELL_VALUE_OPTS:
-            i += 2
-            continue
-        if a.startswith("--"):
-            i += 1
-            continue
-        if a.startswith(("-", "+")) and len(a) > 1:
-            has_c = has_c or "c" in a[1:]
-            i += 1
-            continue
-        return a if has_c else None
-    return None
+def _shell_command(args: list[str]) -> list[str] | None:
+    """Candidate command strings of `sh -c ...`: None if no -c; [] if -c but nothing follows (the caller asks).
+    Option values (`-o pipefail`, `-opipefail`, `-oc pipefail`) and the command are not told apart: with -c anywhere in
+    the options, every non-option word is a candidate. Walking an extra word is an extra check, never a skip."""
+    opts = [a for a in args if a.startswith(("-", "+")) and len(a) > 1 and not a.startswith("--")]
+    if not any("c" in a[1:] for a in opts):
+        return None
+    return [a for a in args if not (a.startswith(("-", "+")) and len(a) > 1)]
 
 
 def _operands(
@@ -317,8 +308,12 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
             continue
         if prog in SHELLS:
             inner = _shell_command(args)
+            if inner == []:
+                p.asks.append(f"{prog} -c with no command string: cannot tell what runs")
+                continue
             if inner is not None and depth < 3:
-                _walk(inner, cwd, p, depth + 1)
+                for cand in inner:
+                    _walk(cand, cwd, p, depth + 1)
                 continue
         if re.match(r"^python(\d+(\.\d+)?)?$", prog) and args[:2] == ["-m", "pip"]:
             prog, args = "pip", args[2:]
@@ -355,6 +350,9 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
             if a[:1] in (["install"], ["sync"]):
                 ops, fl = _operands(a[1:], PIP_VALUES)
                 _reg(p, fl, env)
+                src = _python_project_source(cwd, fl) if prog == "uv" else None  # uv pip reads [tool.uv.pip] / uv.toml
+                if src:
+                    p.asks.append(f"custom package index ({src}): packages would come from a source skedaddle does not check")
                 for o in ops[1:] if a[:1] == ["sync"] else ops:
                     p.add("pypi", o)
                 for e in fl.get("-e", []) + fl.get("--editable", []):
@@ -373,16 +371,23 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
             for o in fl.get("--with", []):
                 p.add("pypi", o)
         elif prog == "cargo" and args[:1] in (["add"], ["install"]):
-            ops, fl = _operands(args[1:], {"--registry", "--index", "--git", "--path", "-p", "--package", "--features", "-F",
+            ops, fl = _operands(args[1:], {"--registry", "--index", "--git", "--config", "--path", "-p", "--package", "--features", "-F",
                                            "--rename", "--target", "--root", "--version", "--vers", "--branch", "--tag", "--rev"})
-            if any(f in fl for f in ("--registry", "--index", "--git")):
-                p.asks.append("cargo with --registry/--index/--git: a source skedaddle does not check")
+            src = next((f for f in ("--registry", "--index", "--git", "--config") if f in fl), None)
+            src = src or next((k for k in env if k.startswith(("CARGO_REGISTRIES_", "CARGO_SOURCE_")) or k == "CARGO_REGISTRY_DEFAULT"), None)
+            src = src or _cargo_config_source(cwd, env)
+            if src:
+                p.asks.append(f"cargo source override ({src}): crates would come from a source skedaddle does not check")
             ver = (fl.get("--version") or fl.get("--vers") or [None])[0]
             if "--path" not in fl:
                 for o in ops:
                     p.add("crates", f"{o}@{ver}" if ver and "@" not in o else o)
         elif (prog == "uv" and args[:1] == ["add"]) or (prog == "poetry" and args[:1] == ["add"]):
-            ops, fl = _operands(args[1:], PIP_VALUES)
+            ops, fl = _operands(args[1:], PIP_VALUES | {"--source"})
+            src = "--source" if "--source" in fl else next((k for k in env if k.startswith("POETRY_REPOSITORIES_")), None)
+            src = src or _python_project_source(cwd, fl)
+            if src:
+                p.asks.append(f"custom package source ({src}): packages would come from a source skedaddle does not check")
             _reg(p, fl, env)
             for o in ops:
                 p.add("pypi", o)
@@ -431,6 +436,75 @@ def _npm_manifest_delta(cwd: str) -> list[str]:
         else:
             out.append(f"{name}@{rng}" if re.match(r"^\d+\.\d+\.\d+$", rng) else name)
     return out
+
+
+def _parents(cwd: str, limit: int = 12):
+    d = os.path.abspath(cwd)
+    for _ in range(limit):
+        yield d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return
+        d = parent
+
+
+def _toml(path: str) -> dict[str, Any] | None:
+    """Parsed TOML, {} if the file does not exist, None if it exists but cannot be parsed (or no tomllib)."""
+    text = _read(path)
+    if not text and not os.path.exists(path):
+        return {}
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python 3.10: the tomli backport (a dependency there)
+        try:
+            import tomli as tomllib
+        except ModuleNotFoundError:
+            return None  # cannot read it, so cannot tell
+    try:
+        return tomllib.loads(text)
+    except ValueError:
+        return None
+
+
+def _cargo_config_source(cwd: str, env: dict[str, str] | None = None) -> str | None:
+    """A cargo config (project .cargo/ in cwd and parents, then $CARGO_HOME) that replaces crates.io or adds registries."""
+    env = env or {}
+    home = env.get("CARGO_HOME") or os.environ.get("CARGO_HOME") or os.path.join(os.path.expanduser("~"), ".cargo")
+    dirs = [os.path.join(d, ".cargo") for d in _parents(cwd)] + [home]
+    for d in dirs:
+        for name in ("config.toml", "config"):
+            path = os.path.join(d, name)
+            doc = _toml(path)
+            if doc is None:
+                return f"{path} (cannot be parsed)"
+            if doc.get("source") or doc.get("registries") or (doc.get("registry") or {}).get("default"):
+                return path
+    return None
+
+
+UV_INDEX_KEYS = ("index", "index-url", "extra-index-url", "find-links", "default-index")
+
+
+def _python_project_source(cwd: str, flags: dict[str, list[str]] | None = None) -> str | None:
+    """A custom index/source declared where uv/poetry would read it: the nearest pyproject.toml (cwd and parents, or
+    --project/--directory), its uv.toml, and the user uv.toml."""
+    flags = flags or {}
+    base = os.path.join(cwd, (flags.get("--project") or flags.get("--directory") or ["."])[0])
+    proj = next((d for d in _parents(base) if os.path.exists(os.path.join(d, "pyproject.toml"))), None)
+    files = ([(os.path.join(proj, "pyproject.toml"), True), (os.path.join(proj, "uv.toml"), False)] if proj else []) + [
+        (os.path.join(os.path.expanduser("~"), ".config", "uv", "uv.toml"), False)]
+    for path, is_pyproject in files:
+        doc = _toml(path)
+        if doc is None:
+            return f"{path} (cannot be parsed)"
+        tool = (doc.get("tool") or {}) if is_pyproject else {"uv": doc}
+        uv, poetry = tool.get("uv") or {}, tool.get("poetry") or {}
+        pip = uv.get("pip") or {}
+        if any(uv.get(k) or pip.get(k) for k in UV_INDEX_KEYS) or poetry.get("source"):
+            return path
+        if any(isinstance(v, dict) and (v.keys() & {"index", "url", "git", "path"}) for v in (uv.get("sources") or {}).values()):
+            return f"{path} [tool.uv.sources]"
+    return None
 
 
 def _read(path: str) -> str:

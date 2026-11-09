@@ -179,3 +179,54 @@ def test_osv_down_is_error_not_allow(registry, monkeypatch):
 def test_malformed_registry_json_is_error(registry):
     registry("https://registry.npmjs.org/pkg-g", [])
     assert check_package("npm", "pkg-g").verdict == "error"
+
+
+def test_rate_limited_download_stats_do_not_fail_the_check(registry, monkeypatch):
+    from skedaddle_mcp import core
+    from skedaddle_mcp.http import FetchError
+
+    real = core.get_json
+
+    def limited(url, body=None, **k):
+        if "api.npmjs.org/downloads" in url:
+            raise FetchError("HTTP Error 429: Too Many Requests")
+        return real(url, body, **k)
+
+    monkeypatch.setattr(core, "get_json", limited)
+    rep = check_package("npm", "express", "5.1.0")  # found by the nightly false-positive scan
+    assert rep.verdict == "allow" and "low-downloads" in signals(rep, "info")
+
+
+# ---- from the first false-positive scan (2026-11-09, 300 popular packages) ----------------------------------------
+def test_parallel_major_lines_are_not_a_provenance_loss(registry):
+    """ox: the 0.14.x line is attested, the 1.8.x line never was; comparing across lines blocked a normal release."""
+    rel = [("1.8.12", "2026-10-20T00:00:00Z", {}), ("0.14.60", "2026-10-27T00:00:00Z", ATT), ("1.8.13", "2026-11-01T00:00:00Z", {}),
+           ("0.14.61", "2026-11-02T00:00:00Z", ATT), ("0.14.62", "2026-11-03T00:00:00Z", ATT),
+           ("0.14.63", "2026-11-04T00:00:00Z", ATT), ("1.8.14", "2026-11-05T00:00:00Z", {})]
+    registry("https://registry.npmjs.org/pkg-h", npm_doc("pkg-h", rel, latest="1.8.14"))
+    assert "provenance-lost" not in signals(check_package("npm", "pkg-h", "1.8.14"))
+
+
+def test_old_dependency_added_in_a_patch_is_info(registry):
+    rel = [("3.35.0", "2025-01-01T00:00:00Z", {}),
+           ("3.35.1", "2025-02-01T00:00:00Z", {"dependencies": {"a": "^1.0.0", "old-dep": "^1.0.0"}})]
+    registry("https://registry.npmjs.org/pkg-i", npm_doc("pkg-i", rel))
+    registry("https://registry.npmjs.org/old-dep", npm_doc("old-dep", [("1.0.0", "2020-01-01T00:00:00Z", {})]))
+    rep = check_package("npm", "pkg-i", "3.35.1")
+    assert rep.verdict == "allow" and "deps-added-in-patch" in signals(rep, "info")
+
+
+def test_first_release_of_a_new_major_still_checked_for_provenance(registry):
+    rel = [(f"1.0.{i}", f"2026-01-0{i + 1}T00:00:00Z", ATT) for i in range(5)] + [("2.0.0", "2026-01-09T00:00:00Z", {})]
+    registry("https://registry.npmjs.org/pkg-j", npm_doc("pkg-j", rel))
+    assert "provenance-lost" in signals(check_package("npm", "pkg-j", "2.0.0"), "block")
+
+
+def test_every_added_dependency_is_checked(registry):
+    deps = {"a": "^1.0.0", **{f"old{i}": "^1.0.0" for i in range(4)}, "zz-brand-new-dep": "^1.0.0"}
+    rel = [("1.0.0", "2025-01-01T00:00:00Z", {}), ("1.0.1", "2025-02-01T00:00:00Z", {"dependencies": deps})]
+    registry("https://registry.npmjs.org/pkg-k", npm_doc("pkg-k", rel))
+    for i in range(4):
+        registry(f"https://registry.npmjs.org/old{i}", npm_doc(f"old{i}", [("1.0.0", "2020-01-01T00:00:00Z", {})]))
+    # zz-brand-new-dep (sorts last) has no fixture = does not exist: the 6th added dependency must still be seen
+    assert "deps-added-in-patch" in signals(check_package("npm", "pkg-k", "1.0.1"), "warn")

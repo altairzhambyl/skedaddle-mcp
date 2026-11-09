@@ -249,3 +249,94 @@ def test_hook_time_budget_asks(registry, tmp_path, monkeypatch):
     t = time.time()
     out = hook.decide("npm i a b c", str(tmp_path), {})
     assert time.time() - t < 3 and out["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+
+# ---- review of 9e0c8bf ----------------------------------------------------------------------------------------------
+def test_shell_option_clusters_with_values(tmp_path):
+    from skedaddle_mcp.hook import plan
+
+    cwd = str(tmp_path)
+    assert plan("bash -eo pipefail -c 'npm i left-pad'", cwd, {})[0] == [("npm", "left-pad")]
+    assert plan("bash -co pipefail 'npm i left-pad'", cwd, {})[0] == [("npm", "left-pad")]
+
+
+def test_cargo_and_poetry_custom_sources_ask(tmp_path):
+    cwd = str(tmp_path)
+    assert _asks("cargo add serde --config 'source.crates-io.replace-with=\"evil\"'", cwd)
+    assert _asks("cargo add serde", cwd, {"CARGO_REGISTRIES_EVIL_INDEX": "https://evil.test"})
+    assert _asks("poetry add requests --source evil", cwd)
+    assert _asks("poetry add requests", cwd, {"POETRY_REPOSITORIES_EVIL_URL": "https://evil.test"})
+    (tmp_path / ".cargo").mkdir()
+    (tmp_path / ".cargo" / "config.toml").write_text('[source.crates-io]\nreplace-with = "evil"\n')
+    assert _asks("cargo add serde", cwd)
+    (tmp_path / "pyproject.toml").write_text('[[tool.poetry.source]]\nname = "evil"\nurl = "https://evil.test/simple"\n')
+    assert _asks("poetry add requests", cwd)
+    import tempfile
+
+    # a subdirectory INHERITS the parent's pyproject (poetry/uv look upward); only a project-less tree is clean
+    assert _asks("poetry add requests", str(tmp_path / ".cargo"))
+    assert not _asks("poetry add requests", tempfile.mkdtemp())
+
+
+def test_hook_process_exits_after_answering(tmp_path):
+    """A check still running in a thread must not keep the process alive past the answer (budget defeated)."""
+    import subprocess
+    import sys
+    import time
+
+    code = ("import time, skedaddle_mcp.hook as h; h.check_package = lambda *a, **k: time.sleep(30); "
+            "import sys; sys.argv = ['skedaddle-mcp', 'hook']; from skedaddle_mcp.cli import main; main()")
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "npm i a"}, "cwd": str(tmp_path)})
+    t = time.time()
+    r = subprocess.run([sys.executable, "-c", code], check=False, input=payload, capture_output=True, text=True, timeout=25,
+                       env={**__import__("os").environ, "SKEDADDLE_HOOK_BUDGET": "1"})
+    assert time.time() - t < 10, "the process waited for the abandoned check"
+    assert json.loads(r.stdout)["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+
+# ---- review of 5926631 ----------------------------------------------------------------------------------------------
+def test_python_project_sources_found_like_the_tools_do(tmp_path):
+    cwd = str(tmp_path)
+    proj = tmp_path / "proj"
+    (proj / "src").mkdir(parents=True)
+    (proj / "pyproject.toml").write_text('[tool.uv]\nindex-url = "https://evil.test/simple"\n')
+    assert _asks("uv add requests", str(proj / "src"))  # found in a parent, like uv does
+    assert _asks("uv add requests --project proj", cwd)
+    (proj / "pyproject.toml").write_text('[[tool.uv.index]]\nname = "x"\nurl = "https://evil.test/simple"\n')
+    assert _asks("uv pip install requests", str(proj))
+    (proj / "pyproject.toml").write_text('[tool.uv.sources]\nrequests = { git = "https://github.com/x/y" }\n')
+    assert _asks("uv add requests", str(proj))
+    (proj / "pyproject.toml").write_text("[tool.uv\nbroken")
+    assert _asks("uv add requests", str(proj))  # unparseable config: cannot tell, ask
+    (proj / "pyproject.toml").write_text('[project]\nname = "ok"\n')
+    assert not _asks("uv add requests", str(proj))
+
+
+def test_cargo_config_parsed_at_any_depth_and_cargo_home(tmp_path):
+    cwd = str(tmp_path)
+    home = tmp_path / "ch"
+    home.mkdir()
+    (home / "config.toml").write_text('[registry]\ndefault = "evil"\n')
+    assert _asks("cargo add serde", cwd, {"CARGO_HOME": str(home)})
+    (home / "config.toml").write_text('[net]\nretry = 2\n')
+    assert not _asks("cargo add serde", cwd, {"CARGO_HOME": str(home)})
+    (home / "config.toml").write_text("[source\nbroken")
+    assert _asks("cargo add serde", cwd, {"CARGO_HOME": str(home)})
+
+
+def test_shell_getopt_clusters(tmp_path):
+    from skedaddle_mcp.hook import plan
+
+    cwd = str(tmp_path)
+    assert plan("bash -opipefail -c 'npm i left-pad'", cwd, {})[0] == [("npm", "left-pad")]  # value glued to -o
+    assert plan("zsh -eo pipefail -c 'npm i left-pad'", cwd, {})[0] == [("npm", "left-pad")]
+    assert _asks("bash -c", cwd)  # -c with no command string: cannot tell what runs
+
+
+def test_shell_cluster_with_o_and_c(tmp_path):
+    """review of 328712e: `-oc` / `-co`: with -c present, every remaining word is walked (an extra check, never a skip)."""
+    from skedaddle_mcp.hook import plan
+
+    cwd = str(tmp_path)
+    assert ("npm", "left-pad") in plan("bash -oc pipefail 'npm i left-pad'", cwd, {})[0]
+    assert ("npm", "left-pad") in plan("bash -co pipefail 'npm i left-pad'", cwd, {})[0]

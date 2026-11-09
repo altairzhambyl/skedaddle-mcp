@@ -19,7 +19,7 @@ classifiers = [
   "Topic :: Security",
   "Topic :: Software Development :: Build Tools",
 ]
-dependencies = ["mcp>=2.3,<3"]
+dependencies = ["mcp>=2.3,<3", "tomli>=2; python_version < '3.11'"]
 
 [project.urls]
 Repository = "https://github.com/altairzhambyl/skedaddle-mcp"
@@ -29,7 +29,11 @@ Issues = "https://github.com/altairzhambyl/skedaddle-mcp/issues"
 skedaddle-mcp = "skedaddle_mcp.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = [
+    "hypothesis>=6.100",
+    "pytest>=8",
+    "ruff>=0.6",
+]
 
 [tool.ruff]
 line-length = 130

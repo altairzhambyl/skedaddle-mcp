@@ -12,8 +12,11 @@ import re
 
 try:
     import tomllib
-except ModuleNotFoundError:  # Python 3.10
-    tomllib = None  # type: ignore[assignment]
+except ModuleNotFoundError:  # Python 3.10: the tomli backport
+    try:
+        import tomli as tomllib  # type: ignore[no-redef]
+    except ModuleNotFoundError:
+        tomllib = None  # type: ignore[assignment]
 
 
 def _read(path: str) -> str:

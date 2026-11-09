@@ -52,7 +52,7 @@ class Report:
 
     def finish(self) -> Report:
         # a fresh release alone is information (popular packages ship daily); next to another integrity signal it warns
-        integrity = {"provenance-lost", "new-publisher", "install-script-added", "deps-added-in-patch", "no-git-head"}
+        integrity = {"provenance-lost", "new-publisher", "install-script-added", "deps-added-in-patch"}
         if not any(f.signal in integrity and f.severity != "info" for f in self.findings):
             for f in self.findings:
                 if f.signal == "fresh-release":
@@ -151,6 +151,26 @@ def osv_findings(rep: Report, eco: str, name: str, version: str | None) -> None:
 
 
 # ---------------------------------------------------------------- npm
+def _fresh_npm_dep(names: list[str], cap: int = 10) -> str | None:
+    """Why an added dependency is suspicious (new, missing, unknown age, or too many to check), else None."""
+    if len(names) > cap:
+        return f"{len(names)} dependencies added, more than the {cap} checked"
+    for dep in names:
+        url = f"https://registry.npmjs.org/{urllib.parse.quote(dep, safe='@')}"
+        try:
+            created = (get_json(url).get("time") or {}).get("created")
+        except NotFound:
+            return f"{dep} does not exist in the registry"
+        except FetchError:
+            return f"{dep} could not be checked"
+        age = _age_days(created)
+        if age is None:
+            return f"{dep} has no publication date"
+        if age < FRESH_PACKAGE_DAYS:
+            return f"{dep} was first published {age:.0f} days ago"
+    return None
+
+
 def _npm_publisher(meta: dict[str, Any]) -> str | None:
     return (meta.get("_npmUser") or {}).get("name")
 
@@ -227,12 +247,16 @@ def npm_findings(rep: Report, name: str, version: str | None) -> str | None:
                 url,
             )
         )
-    # history: stable releases published before this one, newest first
-    prior = sorted(
+    # history: stable releases published before this one, newest first, IN THE SAME MAJOR LINE (projects maintain
+    # parallel lines with different publishing setups: ox 0.14.x is attested, ox 1.8.x never was; FP scan 2026-11-09)
+    tv = _semver(version)
+    every = sorted(
         (v for v in versions if v != version and times.get(v, "") < times.get(version, "") and _semver(v)),
         key=lambda v: times[v],
         reverse=True,
     )
+    same = [v for v in every if tv and _semver(v)[0] == tv[0]]
+    prior = same or every  # the first release of a new major line is compared with the recent releases overall
     prev = versions.get(prior[0]) if prior else None
     if prev is not None:
         recent = [versions[v] for v in prior[:10]]
@@ -280,11 +304,14 @@ def npm_findings(rep: Report, name: str, version: str | None) -> str | None:
         a, b = _semver(prior[0]), _semver(version)
         added = sorted(set(meta.get("dependencies") or {}) - set(prev.get("dependencies") or {}))
         if a and b and a[:2] == b[:2] and added:
+            # an added dependency that is itself new is the axios 1.14.1 pattern (plain-crypto-js); an old one is routine
+            new_dep = _fresh_npm_dep(added)
             rep.add(
                 Finding(
                     "deps-added-in-patch",
-                    "warn",
-                    f"{name}@{version} is a patch release that adds dependencies: {', '.join(added[:5])}",
+                    "warn" if new_dep else "info",
+                    f"{name}@{version} is a patch release that adds dependencies: {', '.join(added[:5])}"
+                    + (f" ({new_dep})" if new_dep else ""),
                     {"added": added, "previous": prior[0]},
                     url,
                 )
@@ -293,7 +320,7 @@ def npm_findings(rep: Report, name: str, version: str | None) -> str | None:
             rep.add(
                 Finding(
                     "no-git-head",
-                    "warn",
+                    "info",  # weak proxy: many projects publish from CI without gitHead
                     f"{name}@{version} has no gitHead (not published from a git checkout), unlike {prior[0]}",
                     {"previous": prior[0]},
                     url,
@@ -332,6 +359,8 @@ def npm_findings(rep: Report, name: str, version: str | None) -> str | None:
                 dl_url,
             )
         )
+    except FetchError as e:  # stats are a soft signal: rate-limited/unavailable stats never make the check fail
+        rep.add(Finding("low-downloads", "info", f"download statistics unavailable ({str(e)[:80]})", {}, dl_url))
     return version
 
 
@@ -406,7 +435,7 @@ def _pypi_publisher(name: str, version: str, files: list[dict[str, Any]]) -> tup
     except NotFound:
         return False, None
     pub = (doc.get("attestation_bundles") or [{}])[0].get("publisher") or {}
-    return True, (f"{pub.get('repository')}/{pub.get('workflow')}" if pub.get("repository") else None)
+    return True, (pub.get("repository") or None)  # a renamed workflow in the same repo is the same publisher (pluggy)
 
 
 def _pypi_provenance(rep: Report, name: str, version: str, rels: dict[str, list[dict[str, Any]]]) -> None:
