@@ -20,6 +20,7 @@ ECOSYSTEMS = {"npm": "npm", "pypi": "PyPI", "crates": "crates.io", "cargo": "cra
 FRESH_PACKAGE_DAYS = 30  # a package this new is the typical typosquat / slopsquat vehicle
 FRESH_RELEASE_DAYS = 3  # most malicious releases are found and pulled within days (cooldown, like pnpm minimumReleaseAge)
 LOW_WEEKLY_DOWNLOADS = 50
+NEW_PUBLISHER_DAYS = 90
 # Ordinary CVEs (no fix, or below HIGH) are not reported unless asked: noise is the #1 reason developers mute security
 # tools (npm maintainer survey, arXiv 2601.20240). A HIGH/CRITICAL CVE with a fixed version blocks, with the fix.
 VERBOSE_CVES = os.environ.get("SKEDADDLE_ALL_CVES") == "1"
@@ -312,10 +313,14 @@ def npm_findings(rep: Report, name: str, version: str | None) -> str | None:
         if pub and pub != "npm" and pub not in seen and not _npm_attested(meta):
             pv, tv = _semver(prior[0]), _semver(version)
             major_bump = bool(pv and tv and tv[0] > pv[0])  # release-process changes cluster on majors (typescript 7)
+            # a takeover matters while the release is new; years later a compromise would be known (OSV), and old
+            # maintainer turnover is noise (power-user eval: express@4.21.2 warned for a 2024 handover)
+            rel = _age_days(times.get(version))
+            recent_release = rel is None or rel < NEW_PUBLISHER_DAYS
             rep.add(
                 Finding(
                     "new-publisher",
-                    "info" if major_bump else "warn",
+                    "info" if major_bump or not recent_release else "warn",
                     f"{name}@{version} was published by '{pub}', who published none of the previous {len(recent)} releases "
                     f"({', '.join(sorted(p for p in seen if p))}), without provenance",
                     {

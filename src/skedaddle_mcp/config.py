@@ -69,6 +69,14 @@ class Config:
         return None
 
 
+def _parse_toml(raw: bytes) -> dict[str, Any]:
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        import tomli as tomllib  # type: ignore[no-redef]
+    return tomllib.loads(raw.decode("utf-8"))
+
+
 def _toml(path: str) -> dict[str, Any] | None:
     try:
         with open(path, "rb") as fh:
@@ -144,16 +152,27 @@ def load(cwd: str | None = None) -> Config:
     cfg = Config()
     xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
     user = os.environ.get("SKEDADDLE_USER_CONFIG") or os.path.join(xdg, "skedaddle", "config.toml")
+    import hashlib
+
     repo = _repo_file(cwd or os.getcwd())
-    if repo and _trusted_hashes().get(os.path.realpath(repo)) != _sha(repo):
-        # a repo file can come from a malicious PR or be written by the agent itself: it relaxes checks only after
-        # the user reviewed this exact content (`skedaddle-mcp trust`); an edit voids it (review of c0fe100)
-        cfg.untrusted, repo = repo, None
-    for path in (user, repo):
-        if not path or not os.path.exists(path):
+    sources: list[tuple[str, bytes]] = []
+    for path, is_repo in ((user, False), (repo, True)):
+        if not path:
             continue
         try:
-            doc = _toml(path) or {}
+            with open(path, "rb") as fh:
+                raw = fh.read()  # read ONCE: the bytes that are hashed are the bytes that are parsed (review of c18f46b)
+        except OSError:
+            continue
+        if is_repo and _trusted_hashes().get(os.path.realpath(path)) != hashlib.sha256(raw).hexdigest():
+            # a repo file can come from a malicious PR or be written by the agent itself: it relaxes checks only
+            # after the user reviewed this exact content (`skedaddle-mcp trust`); an edit voids it (review of c0fe100)
+            cfg.untrusted = path
+            continue
+        sources.append((path, raw))
+    for path, raw in sources:
+        try:
+            doc = _parse_toml(raw) or {}
         except ValueError as e:
             cfg.errors.append(f"{path}: {e} (ignored)")
             continue

@@ -14,8 +14,20 @@ def signals(rep, severity=None):
 # ---- real incidents (recorded answers) --------------------------------------------------------------------------
 def test_event_stream_new_publisher_real(registry):
     rep = check_package("npm", "event-stream", "3.3.5")  # right9ctrl took over from dominictarr (2018)
-    assert "new-publisher" in signals(rep, "warn"), rep.findings
-    assert rep.verdict == "warn"
+    # still reported, but as info: a 2018 handover is history now (the takeover warn is for fresh releases)
+    assert "new-publisher" in signals(rep, "info"), rep.findings
+    assert rep.verdict == "allow"
+
+
+def test_new_publisher_on_a_fresh_release_warns(registry):
+    import datetime as dt
+
+    now = dt.datetime.now(dt.timezone.utc)
+    iso = lambda d: (now - dt.timedelta(days=d)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    rel = [("3.3.3", iso(400), {}), ("3.3.4", iso(300), {}), ("3.3.5", iso(10), {"_npmUser": {"name": "right9ctrl"}})]
+    registry("https://registry.npmjs.org/pkg-takeover", npm_doc("pkg-takeover", rel))
+    rep = check_package("npm", "pkg-takeover", "3.3.5")
+    assert rep.verdict == "warn" and "new-publisher" in signals(rep, "warn")
 
 
 def test_event_stream_malicious_version_unpublished_real(registry):

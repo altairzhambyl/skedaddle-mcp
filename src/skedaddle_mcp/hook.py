@@ -318,8 +318,26 @@ def plan(command: str, cwd: str, env: dict[str, str] | None = None, depth: int =
     return tg, p.asks
 
 
+HEREDOC = re.compile(r"<<(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
+
+
+def _strip_heredocs(command: str) -> str:
+    """Drop heredoc BODIES (text fed to a command's stdin is data, not commands); the command line itself stays."""
+    out, delim, dash = [], None, False
+    for line in command.split("\n"):
+        if delim is not None:
+            if (line.lstrip("\t") if dash else line) == delim:
+                delim = None
+            continue
+        out.append(line)
+        m = HEREDOC.search(line)
+        if m and "<<<" not in line:
+            dash, delim = bool(m[1]), m[3]
+    return "\n".join(out)
+
+
 def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
-    for seg in SEP.split(command):
+    for seg in SEP.split(_strip_heredocs(command)):
         w, assigns = _unwrap(seg)
         env = {**p.env, **assigns}
         guard = _self_protection(seg, w, assigns)
@@ -331,8 +349,16 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
         prog, args = os.path.basename(w[0]), w[1:]
         if prog in ("claude", "codex", "gemini", "cursor-agent") and args[:2] in (["mcp", "add"], ["mcp", "add-json"]):
             # registering an MCP server is installing a package that runs with the agent's rights (postmark-mcp 2025)
-            if args[1] == "add" and "--" in args:
-                inner = args[args.index("--") + 1 :]
+            if args[1] == "add":
+                if "--" in args:
+                    inner = args[args.index("--") + 1 :]
+                else:  # claude mcp add [opts] NAME COMMAND [ARGS...]
+                    rest, i = args[2:], 0
+                    while i < len(rest) and rest[i].startswith("-"):
+                        i += 2 if rest[i] in ("-s", "--scope", "-e", "--env", "-t", "--transport", "-H", "--header") else 1
+                    inner = rest[i + 1 :]
+                    if inner and re.match(r"^https?://", inner[0]):
+                        inner = []  # a remote (http/sse) server: nothing is installed locally
                 if inner and depth < 3:
                     _walk(shlex.join(inner), cwd, p, depth + 1)
             elif args[1] == "add-json":
@@ -474,7 +500,9 @@ def _self_protection(seg: str, words: list[str], assigns: dict[str, str]) -> str
     prog = os.path.basename(words[0]) if words else ""
     if any(k.startswith("SKEDADDLE_") for k in assigns) or (prog == "export" and "SKEDADDLE_" in seg):
         return "setting SKEDADDLE_* changes skedaddle's own behaviour: that is the user's decision, not the agent's"
-    if "skedaddle-mcp" in seg and re.search(r"(^|\s)trust(\s|$)", seg):
+    names = [os.path.basename(x) for x in words]
+    runs_us = any(n in ("skedaddle-mcp", "skedaddle_mcp", "skedaddle_mcp.cli") for n in names) or "skedaddle" in seg
+    if runs_us and "trust" in names:
         return "`skedaddle-mcp trust` approves a policy that relaxes checks: only the user may run it"
     if any(pth in seg for pth in POLICY_PATHS) and (prog not in READ_ONLY or re.search(r">|\btee\b", seg)):
         return "this command touches skedaddle's policy or state files: changing them is the user's decision"

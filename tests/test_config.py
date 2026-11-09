@@ -111,3 +111,14 @@ def test_log_redacts_secrets(registry, tmp_path, monkeypatch):
            "--registry https://" + "user" + ":" + "hunter2" + "@registry.npmjs.org/", str(tmp_path), {})
     text = log.read_text()
     assert "npm_abcdefghijklmnopqrstuvwxyz0123456789" not in text and "hunter2" not in text, text
+
+
+def test_trust_detected_from_argv_not_text(tmp_path):
+    """review of c18f46b: `python -m skedaddle_mcp.cli trust` and quoting tricks must also ask."""
+    for cmd in ("python -m skedaddle_mcp.cli trust", "python3 -m skedaddle_mcp trust", "skedaddle-mcp 'trust'",
+                "~/.local/bin/skedaddle-mcp trust --yes"):
+        assert plan(cmd, str(tmp_path), {})[1], cmd
+
+
+def test_mcp_add_without_double_dash(tmp_path):
+    assert plan("claude mcp add pm npx -y postmark-mcp", str(tmp_path), {})[0] == [("npm", "postmark-mcp")]
