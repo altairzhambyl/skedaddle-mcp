@@ -228,19 +228,20 @@ SHELL_VALUE_OPTS = {"-o", "+o", "-O", "+O", "--rcfile", "--init-file"}
 
 
 def _shell_command(args: list[str]) -> str | None:
-    """The command string of `sh -c CMD` / `bash -lc CMD` / `bash -o pipefail -c CMD`; None if not a -c invocation."""
+    """The command string of `sh -c CMD` / `bash -lc CMD` / `bash -eo pipefail -c CMD`; None if not a -c invocation."""
     has_c, i = False, 0
     while i < len(args):
         a = args[i]
-        if a in SHELL_VALUE_OPTS:
+        if a in ("--rcfile", "--init-file"):
             i += 2
             continue
         if a.startswith("--"):
             i += 1
             continue
         if a.startswith(("-", "+")) and len(a) > 1:
-            has_c = has_c or "c" in a[1:]
-            i += 1
+            cluster = a[1:]
+            has_c = has_c or "c" in cluster
+            i += 1 + sum(ch in "oO" for ch in cluster)  # -o / -O / +o take a value each
             continue
         return a if has_c else None
     return None
@@ -373,16 +374,23 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
             for o in fl.get("--with", []):
                 p.add("pypi", o)
         elif prog == "cargo" and args[:1] in (["add"], ["install"]):
-            ops, fl = _operands(args[1:], {"--registry", "--index", "--git", "--path", "-p", "--package", "--features", "-F",
+            ops, fl = _operands(args[1:], {"--registry", "--index", "--git", "--config", "--path", "-p", "--package", "--features", "-F",
                                            "--rename", "--target", "--root", "--version", "--vers", "--branch", "--tag", "--rev"})
-            if any(f in fl for f in ("--registry", "--index", "--git")):
-                p.asks.append("cargo with --registry/--index/--git: a source skedaddle does not check")
+            src = next((f for f in ("--registry", "--index", "--git", "--config") if f in fl), None)
+            src = src or next((k for k in env if k.startswith(("CARGO_REGISTRIES_", "CARGO_SOURCE_")) or k == "CARGO_REGISTRY_DEFAULT"), None)
+            src = src or _cargo_config_source(cwd)
+            if src:
+                p.asks.append(f"cargo source override ({src}): crates would come from a source skedaddle does not check")
             ver = (fl.get("--version") or fl.get("--vers") or [None])[0]
             if "--path" not in fl:
                 for o in ops:
                     p.add("crates", f"{o}@{ver}" if ver and "@" not in o else o)
         elif (prog == "uv" and args[:1] == ["add"]) or (prog == "poetry" and args[:1] == ["add"]):
-            ops, fl = _operands(args[1:], PIP_VALUES)
+            ops, fl = _operands(args[1:], PIP_VALUES | {"--source"})
+            src = "--source" if "--source" in fl else next((k for k in env if k.startswith("POETRY_REPOSITORIES_")), None)
+            src = src or _pyproject_source(cwd)
+            if src:
+                p.asks.append(f"custom package source ({src}): packages would come from a source skedaddle does not check")
             _reg(p, fl, env)
             for o in ops:
                 p.add("pypi", o)
@@ -431,6 +439,30 @@ def _npm_manifest_delta(cwd: str) -> list[str]:
         else:
             out.append(f"{name}@{rng}" if re.match(r"^\d+\.\d+\.\d+$", rng) else name)
     return out
+
+
+def _parents(cwd: str, limit: int = 12):
+    d = os.path.abspath(cwd)
+    for _ in range(limit):
+        yield d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return
+        d = parent
+
+
+def _cargo_config_source(cwd: str) -> str | None:
+    for d in _parents(cwd):
+        for name in ("config.toml", "config"):
+            path = os.path.join(d, ".cargo", name)
+            if re.search(r"^\s*\[(source\.[^\]]+|registries(\.[^\]]+)?)\]", _read(path), re.MULTILINE):
+                return path
+    return None
+
+
+def _pyproject_source(cwd: str) -> str | None:
+    path = os.path.join(cwd, "pyproject.toml")
+    return path if re.search(r"^\s*\[\[tool\.(poetry\.source|uv\.index)\]\]", _read(path), re.MULTILINE) else None
 
 
 def _read(path: str) -> str:

@@ -31,9 +31,13 @@ def main(argv: list[str] | None = None) -> int:
         print(__doc__.strip())
         return 0
     if args[0] == "hook":
+        import os
+
         from .hook import main as hook
 
-        return hook()
+        rc = hook()
+        sys.stdout.flush()
+        os._exit(rc)  # do not wait for check threads abandoned at the time budget
     if args[0] == "doctor":
         from .doctor import main as doctor
 

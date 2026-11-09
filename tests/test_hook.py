@@ -249,3 +249,42 @@ def test_hook_time_budget_asks(registry, tmp_path, monkeypatch):
     t = time.time()
     out = hook.decide("npm i a b c", str(tmp_path), {})
     assert time.time() - t < 3 and out["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+
+# ---- review of 9e0c8bf ----------------------------------------------------------------------------------------------
+def test_shell_option_clusters_with_values(tmp_path):
+    from skedaddle_mcp.hook import plan
+
+    cwd = str(tmp_path)
+    assert plan("bash -eo pipefail -c 'npm i left-pad'", cwd, {})[0] == [("npm", "left-pad")]
+    assert plan("bash -co pipefail 'npm i left-pad'", cwd, {})[0] == [("npm", "left-pad")]
+
+
+def test_cargo_and_poetry_custom_sources_ask(tmp_path):
+    cwd = str(tmp_path)
+    assert _asks("cargo add serde --config 'source.crates-io.replace-with=\"evil\"'", cwd)
+    assert _asks("cargo add serde", cwd, {"CARGO_REGISTRIES_EVIL_INDEX": "https://evil.test"})
+    assert _asks("poetry add requests --source evil", cwd)
+    assert _asks("poetry add requests", cwd, {"POETRY_REPOSITORIES_EVIL_URL": "https://evil.test"})
+    (tmp_path / ".cargo").mkdir()
+    (tmp_path / ".cargo" / "config.toml").write_text('[source.crates-io]\nreplace-with = "evil"\n')
+    assert _asks("cargo add serde", cwd)
+    (tmp_path / "pyproject.toml").write_text('[[tool.poetry.source]]\nname = "evil"\nurl = "https://evil.test/simple"\n')
+    assert _asks("poetry add requests", cwd)
+    assert not _asks("poetry add requests", str(tmp_path / ".cargo"))  # no pyproject there
+
+
+def test_hook_process_exits_after_answering(tmp_path):
+    """A check still running in a thread must not keep the process alive past the answer (budget defeated)."""
+    import subprocess
+    import sys
+    import time
+
+    code = ("import time, skedaddle_mcp.hook as h; h.check_package = lambda *a, **k: time.sleep(30); "
+            "import sys; sys.argv = ['skedaddle-mcp', 'hook']; from skedaddle_mcp.cli import main; main()")
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "npm i a"}, "cwd": str(tmp_path)})
+    t = time.time()
+    r = subprocess.run([sys.executable, "-c", code], check=False, input=payload, capture_output=True, text=True, timeout=25,
+                       env={**__import__("os").environ, "SKEDADDLE_HOOK_BUDGET": "1"})
+    assert time.time() - t < 10, "the process waited for the abandoned check"
+    assert json.loads(r.stdout)["hookSpecificOutput"]["permissionDecision"] == "ask"
