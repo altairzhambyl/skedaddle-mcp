@@ -38,6 +38,7 @@ def get_json(
     body: dict[str, Any] | None = None,
     timeout: float = 10.0,
     retries: int = 1,
+    fresh: bool = False,
 ) -> Any:
     fx = os.environ.get("SKEDADDLE_FIXTURES")
     if fx:
@@ -46,7 +47,7 @@ def get_json(
             raise NotFound(url)
         with open(path, encoding="utf-8") as fh:
             return json.load(fh)
-    cached = _cache_get(url, body)
+    cached = None if fresh else _cache_get(url, body)  # fresh: decide on live data (the answer is still cached)
     if cached is not None:
         if cached.get("status") == 404:
             raise NotFound(url)
@@ -68,11 +69,11 @@ def get_json(
 # are re-asked after the TTL. A cached 404 keeps blocking (the safe direction) only briefly, so a name that gets
 # registered is re-checked soon. Private: the directory is 0700 and files are 0600. SKEDADDLE_CACHE=0 disables it.
 TTL = [  # (url prefix, seconds)
-    ("https://api.osv.dev/", 3600),
+    ("https://api.osv.dev/", 600),  # malware records appear within hours: an allow must not lean on an old answer
     ("https://api.npmjs.org/downloads/", 86400),
     ("https://pypi.org/integrity/", 86400),
 ]
-DEFAULT_TTL, NOT_FOUND_TTL = 900, 300
+DEFAULT_TTL, NOT_FOUND_TTL = 600, 300
 TRIMMERS: list[tuple[str, Any]] = []  # (url prefix, fn(doc) -> smaller doc); registered by core
 
 

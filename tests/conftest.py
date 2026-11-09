@@ -11,6 +11,15 @@ from skedaddle_mcp.http import fixture_key
 REAL = os.path.join(os.path.dirname(__file__), "fixtures")
 
 
+@pytest.fixture(autouse=True)
+def _hermetic(tmp_path_factory, monkeypatch):
+    """Tests never write the user's real decision log, cache or config."""
+    d = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("SKEDADDLE_LOG", str(d / "decisions.jsonl"))
+    monkeypatch.setenv("SKEDADDLE_CACHE_DIR", str(d / "cache"))
+    monkeypatch.setenv("SKEDADDLE_USER_CONFIG", str(d / "config.toml"))  # not XDG_CONFIG_HOME: git hooks live there
+
+
 @pytest.fixture
 def registry(tmp_path, monkeypatch):
     """Offline registry: the recorded real answers, plus `put(url, doc, body=None)` for synthetic cases."""

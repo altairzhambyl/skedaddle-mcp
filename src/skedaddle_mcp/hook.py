@@ -22,6 +22,7 @@ import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Any
 
+from .config import load as load_config
 from .core import check_package, parse_spec
 
 SEP = re.compile(r"\s*(?:&&|\|\||;|\||\n)\s*")
@@ -111,7 +112,17 @@ REGISTRY_FLAGS = {
 OFFICIAL_HOSTS = {"registry.npmjs.org": "", "registry.yarnpkg.com": "", "pypi.org": "/simple", "files.pythonhosted.org": ""}
 
 
+_ACTIVE: list = [None]  # the Config of the command being planned (trusted mirrors count as official)
+
+
 def official(url: str) -> bool:
+    cfg = _ACTIVE[0]
+    if cfg is not None and cfg.trusted(url):
+        return True
+    return _public_official(url)
+
+
+def _public_official(url: str) -> bool:
     """https, no user:password@, an exact official host (pypi.org only under /simple)."""
     try:
         u = urllib.parse.urlsplit(url.strip())
@@ -288,6 +299,7 @@ def _registry_override(flags: dict[str, list[str]], env: dict[str, str]) -> str 
 def plan(command: str, cwd: str, env: dict[str, str] | None = None, depth: int = 0) -> tuple[list[tuple[str, str]], list[str]]:
     """([(ecosystem, spec)] to check, [reasons to ask the user]) for a shell command."""
     p = Plan(dict(os.environ if env is None else env))
+    _ACTIVE[0] = load_config(cwd)
     _walk(command, cwd, p, depth)
     tg = list(dict.fromkeys(p.targets))
     if len(tg) > MAX_TARGETS:
@@ -601,7 +613,48 @@ def targets(command: str, cwd: str) -> list[tuple[str, str]]:
 
 
 def decide(command: str, cwd: str, env: dict[str, str] | None = None) -> dict[str, Any] | None:
+    """The hook's answer for one shell command, logged locally (see `skedaddle-mcp stats`)."""
+    _LAST[0] = []
+    res = _decide(command, cwd, env)
+    if _LAST[0]:
+        hs = (res or {}).get("hookSpecificOutput") or {}
+        decision = hs.get("permissionDecision") or ("warn" if hs.get("additionalContext") else "allow")
+        log_decision({"cwd": cwd, "command": command[:300], "decision": decision,
+                      "packages": [f"{e}:{s}" for e, s in _LAST[0]],
+                      "reason": (hs.get("permissionDecisionReason") or hs.get("additionalContext") or "")[:600]})
+    return res
+
+
+_LAST: list = [[]]
+
+
+def log_path() -> str | None:
+    v = os.environ.get("SKEDADDLE_LOG")
+    if v == "0":
+        return None
+    return v or os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state"),
+                             "skedaddle", "decisions.jsonl")
+
+
+def log_decision(row: dict[str, Any]) -> None:
+    """Append one JSON line (0600). Local only: nothing is sent anywhere. SKEDADDLE_LOG=0 disables it."""
+    import time as _time
+
+    path = log_path()
+    if not path:
+        return
+    try:
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"ts": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()), **row}) + "\n")
+    except OSError:
+        pass
+
+
+def _decide(command: str, cwd: str, env: dict[str, str] | None = None) -> dict[str, Any] | None:
     tg, asks = plan(command, cwd, env)
+    _LAST[0] = tg or [("-", a[:80]) for a in asks]
     if not tg and not asks:
         return None
     blocks, warns, errors = [], [], list(asks)
@@ -613,7 +666,8 @@ def decide(command: str, cwd: str, env: dict[str, str] | None = None) -> dict[st
             errors.append(str(e))
     budget = float(os.environ.get("SKEDADDLE_HOOK_BUDGET", "20"))  # under the harness timeout: a killed hook = allowed
     ex = ThreadPoolExecutor(max_workers=8)
-    futs = {ex.submit(check_package, eco, name, version): (eco, name) for eco, name, version in jobs}
+    cfg = _ACTIVE[0]
+    futs = {ex.submit(check_package, eco, name, version, cfg): (eco, name) for eco, name, version in jobs}
     done, late = wait(futs, timeout=budget)
     ex.shutdown(wait=False, cancel_futures=True)
     errors += [f"{futs[fut][0]}:{futs[fut][1]}: not checked within {budget:.0f}s" for fut in late]

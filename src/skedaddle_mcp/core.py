@@ -206,6 +206,17 @@ def _npm_attested(meta: dict[str, Any]) -> bool:
 def npm_findings(rep: Report, name: str, version: str | None) -> str | None:
     url = f"https://registry.npmjs.org/{urllib.parse.quote(name, safe='@')}".replace("%40", "@", 1)
     doc = get_json(url)
+    if not version:
+        # an unpinned install gets TODAY's latest: never judge a cached older one (review of cbb7684: the axios
+        # 1.14.1 window was ~3 hours). dist-tags is a tiny live request; a different latest refetches the packument.
+        try:
+            live = get_json(f"https://registry.npmjs.org/-/package/{urllib.parse.quote(name, safe='@')}/dist-tags", fresh=True)
+        except NotFound:
+            live = None
+        except FetchError:
+            live = {}
+        if live is not None and live.get("latest") != (doc.get("dist-tags") or {}).get("latest"):
+            doc = get_json(url, fresh=True)
     times: dict[str, str] = doc.get("time") or {}
     versions: dict[str, Any] = doc.get("versions") or {}
     version = version or (doc.get("dist-tags") or {}).get("latest")
@@ -391,7 +402,7 @@ def npm_findings(rep: Report, name: str, version: str | None) -> str | None:
 # ---------------------------------------------------------------- PyPI / crates
 def pypi_findings(rep: Report, name: str, version: str | None) -> str | None:
     url = f"https://pypi.org/pypi/{urllib.parse.quote(name)}/json"
-    doc = get_json(url)
+    doc = get_json(url, fresh=not version)  # unpinned: today's latest, never a cached older one
     version = version or (doc.get("info") or {}).get("version")
     rep.version = version
     rels = doc.get("releases") or {}
@@ -533,6 +544,28 @@ def crates_findings(rep: Report, name: str, version: str | None) -> str | None:
     return version
 
 
+def _internal_check(rep: Report, eco: str, name: str) -> Report:
+    """An internal name must NOT exist on the public registry: if it does, a public package is shadowing it (dependency
+    confusion, Birsan 2021: 35+ companies incl. Apple, Microsoft, Netflix). Absent = internal = not 'hallucinated'."""
+    q = urllib.parse.quote(name, safe="@")
+    url = {"npm": f"https://registry.npmjs.org/{q}", "PyPI": f"https://pypi.org/pypi/{urllib.parse.quote(name)}/json",
+           "crates.io": f"https://crates.io/api/v1/crates/{urllib.parse.quote(name)}"}[eco]
+    try:
+        get_json(url)
+    except NotFound:
+        rep.add(Finding("internal", "info", f"{name} is an internal package name and is not on the public registry (good)", {}, url))
+        return rep.finish()
+    except FetchError as e:
+        rep.verdict = "error"
+        rep.add(Finding("unverifiable", "warn", f"could not check whether internal name {name} is taken publicly ({e})", {}, url))
+        return rep
+    rep.add(Finding("dependency-confusion", "block",
+                    f"{name} matches your internal package names but EXISTS on the public registry: an install that resolves "
+                    "publicly gets the attacker's package (dependency confusion). Install it from your internal registry with "
+                    "the scope/index pinned, and report the public name to your security team.", {}, url))
+    return rep.finish()
+
+
 def _prefetch(eco: str, name: str, version: str | None) -> None:
     """Fire the independent lookups at once so the sequential checks below read them from the disk cache: a cold
     check costs one round trip instead of three. Best effort: any failure here is retried by the real lookup."""
@@ -561,10 +594,18 @@ def _prefetch(eco: str, name: str, version: str | None) -> None:
         list(ex.map(one, jobs))
 
 
-def check_package(ecosystem: str, name: str, version: str | None = None) -> Report:
-    """Check one package (optionally one exact version). Never raises: a failure is verdict 'error' with the reason."""
+def check_package(ecosystem: str, name: str, version: str | None = None, cfg: Any = None) -> Report:
+    """Check one package (optionally one exact version). Never raises: a failure is verdict 'error' with the reason.
+    cfg (skedaddle_mcp.config.Config): time-boxed exceptions and internal package names (dependency confusion)."""
     eco = ECOSYSTEMS.get(ecosystem.lower())
     rep = Report(ecosystem, name, version)
+    if cfg is not None and eco is not None:
+        exc = cfg.allowed(ecosystem, name, version)
+        if exc:
+            rep.add(Finding("exception", "info", f"allowed by policy until {exc.get('expires')}: {exc.get('reason') or 'no reason'}", dict(exc)))
+            return rep.finish()
+        if cfg.internal(ecosystem.lower(), name):
+            return _internal_check(rep, eco, name)
     if eco is None:
         rep.verdict = "error"
         rep.add(

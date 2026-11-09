@@ -101,3 +101,39 @@ def test_trimmed_packument_gives_the_same_verdicts(registry, tmp_path):
     for c in cases:
         a, b = full[c], check_package("npm", *c)
         assert (a.verdict, sorted(f.signal for f in a.findings)) == (b.verdict, sorted(f.signal for f in b.findings)), c
+
+
+def test_unpinned_install_never_judges_a_stale_latest(tmp_path, monkeypatch):
+    """review of cbb7684: a cached packument said latest=1.0.4; a compromised 1.0.5 shipped since. `npm i pkg` installs
+    1.0.5, so the check must too (the axios 1.14.1 window was ~3 hours)."""
+    from skedaddle_mcp import core
+
+    monkeypatch.delenv("SKEDADDLE_FIXTURES", raising=False)
+    monkeypatch.setenv("SKEDADDLE_CACHE_DIR", str(tmp_path))
+    att = {"attestations": {"url": "x"}}
+    # five attested 1.0.x releases (the same-major history the provenance signal needs), latest 1.0.4
+    old = {"name": "pkg-z", "dist-tags": {"latest": "1.0.4"},
+           "time": {"created": "2020-01-01T00:00:00Z", **{f"1.0.{i}": f"2020-0{i + 1}-01T00:00:00Z" for i in range(5)}},
+           "versions": {f"1.0.{i}": {"dist": att} for i in range(5)}}
+    new = json.loads(json.dumps(old))
+    new["dist-tags"]["latest"] = "1.0.5"
+    new["time"]["1.0.5"] = "2021-02-01T00:00:00Z"
+    new["versions"]["1.0.5"] = {"dist": {}}  # provenance lost: must block
+    state = {"doc": old}
+    pk = "https://registry.npmjs.org/pkg-z"
+
+    def urlopen(req, timeout=0):
+        u = req.full_url
+        if u == pk:
+            return _Resp(json.dumps(state["doc"]).encode())
+        if u.endswith("/-/package/pkg-z/dist-tags"):
+            return _Resp(json.dumps(state["doc"]["dist-tags"]).encode())
+        if "downloads" in u:
+            return _Resp(b'{"downloads": 100000}')
+        return _Resp(b'{"vulns": []}')
+
+    monkeypatch.setattr(http.urllib.request, "urlopen", urlopen)
+    assert core.check_package("npm", "pkg-z").verdict == "allow"  # 1.0.4, cached now
+    state["doc"] = new  # the compromised release ships
+    rep = core.check_package("npm", "pkg-z")
+    assert rep.version == "1.0.5" and rep.verdict == "block", (rep.version, rep.findings)
