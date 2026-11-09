@@ -321,19 +321,30 @@ def plan(command: str, cwd: str, env: dict[str, str] | None = None, depth: int =
 HEREDOC = re.compile(r"<<(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
 
 
+DATA_SINKS = re.compile(r"^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(cat|tee)\b")
+
+
 def _strip_heredocs(command: str) -> str:
-    """Drop heredoc BODIES (text fed to a command's stdin is data, not commands); the command line itself stays."""
-    out, delim, dash = [], None, False
+    """Drop heredoc BODIES only when a data sink reads them (`cat > notes.md <<EOF`, `tee`): text written to a file is
+    not executed. A heredoc fed to anything else (bash, sh, ssh, python, ...) IS executed, so its lines stay and are
+    checked; an unterminated heredoc keeps its lines too (fails closed; review of 4f4d939)."""
+    out: list[str] = []
+    held: list[str] = []
+    delim, dash, sink = None, False, False
     for line in command.split("\n"):
         if delim is not None:
             if (line.lstrip("\t") if dash else line) == delim:
-                delim = None
+                if not sink:
+                    out.extend(held)
+                held, delim = [], None
+            else:
+                held.append(line)
             continue
         out.append(line)
         m = HEREDOC.search(line)
         if m and "<<<" not in line:
-            dash, delim = bool(m[1]), m[3]
-    return "\n".join(out)
+            dash, delim, sink = bool(m[1]), m[3], bool(DATA_SINKS.match(line))
+    return "\n".join(out + held)  # an unterminated heredoc's lines are kept
 
 
 def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
@@ -812,6 +823,13 @@ def _decide(command: str, cwd: str, env: dict[str, str] | None = None) -> dict[s
         label = f"{eco}:{name}{'@' + rep.version if rep.version else ''}"
         shown = [x for x in rep.findings if x.severity != "info" and (rep.verdict != "block" or x.severity == "block")]
         lines = [f"{label}: {x.message}" + (f" ({x.source})" if x.source else "") for x in shown]
+        if rep.verdict == "block" and rep.suggestion:
+            sug = rep.suggestion
+            if "version" in sug:
+                fixed = f"{name}=={sug['version']}" if eco == "pypi" else f"{name}@{sug['version']}"
+                lines.append(f"-> install {fixed} instead: it fixes every blocking advisory above (same major line when possible)")
+            elif "did_you_mean" in sug:
+                lines.append(f"-> did you mean `{sug['did_you_mean']}`? Check it is the package you intended before installing")
         {"block": blocks, "warn": warns, "error": errors}.get(rep.verdict, []).extend(lines)
     untrusted = getattr(_ACTIVE[0], "untrusted", None)
     if untrusted:

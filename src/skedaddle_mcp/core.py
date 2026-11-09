@@ -48,6 +48,7 @@ class Report:
     version: str | None
     verdict: str = "allow"  # allow | warn | block | error
     findings: list[Finding] = field(default_factory=list)
+    suggestion: dict[str, str] | None = None  # what to do instead: {"version": ...} or {"did_you_mean": ...}
 
     def add(self, f: Finding) -> None:
         self.findings.append(f)
@@ -220,6 +221,7 @@ def npm_findings(rep: Report, name: str, version: str | None) -> str | None:
             doc = get_json(url, fresh=True)
     times: dict[str, str] = doc.get("time") or {}
     versions: dict[str, Any] = doc.get("versions") or {}
+    rep.__dict__["_versions"] = set(versions)  # not a dataclass field: used only to name a fix that exists
     version = version or (doc.get("dist-tags") or {}).get("latest")
     rep.version = version
     age = _age_days(times.get("created"))
@@ -634,6 +636,9 @@ def check_package(ecosystem: str, name: str, version: str | None = None, cfg: An
                 "(slopsquatting)",
             )
         )
+        close = _did_you_mean(eco, name)
+        if close:
+            rep.suggestion = {"did_you_mean": close}
         return rep.finish()
     except FetchError as e:
         rep.verdict = "error"
@@ -658,7 +663,50 @@ def check_package(ecosystem: str, name: str, version: str | None = None, cfg: An
         if rep.verdict != "block":
             rep.verdict = "error"
         return rep
-    return rep.finish()
+    rep.finish()
+    fix = _fixing_version(rep)
+    if fix:
+        rep.suggestion = {"version": fix}
+    return rep
+
+
+def _vkey(v: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in re.findall(r"\d+", v.split("-")[0])[:4]) or (0,)
+
+
+def _fixing_version(rep: Report) -> str | None:
+    """One version that fixes EVERY blocking advisory, preferring the current major line (next 15.0.0 -> 15.5.28, not
+    16.x). Only when CVEs are the whole reason for the block (a malicious package has no 'fixed' version)."""
+    blocking = [f for f in rep.findings if f.severity == "block"]
+    if not blocking or not rep.version or any(f.signal != "cve" for f in blocking):
+        return None
+    cur = _vkey(rep.version)
+    need: list[tuple[int, ...]] = []
+    for f in blocking:
+        later = sorted((_vkey(x), x) for x in f.evidence.get("fixed") or [] if _vkey(x) > cur)
+        same = [k for k, _ in later if k[0] == cur[0]]
+        if not later:
+            return None  # one advisory has no fix above this version: nothing honest to suggest
+        need.append(same[0] if same else later[0][0])
+    target = max(need)
+    known = rep.__dict__.get("_versions") or set()
+    names = sorted((v for v in known if _vkey(v) >= target and _vkey(v)[0] == target[0] and not re.search(r"[a-z]", v)), key=_vkey)
+    return names[0] if names else ".".join(map(str, target))
+
+
+def _did_you_mean(eco: str, name: str) -> str | None:
+    """The closest real package name for a hallucinated/mistyped one (npm search; PyPI has no search API)."""
+    import difflib
+
+    if eco != "npm":
+        return None
+    try:
+        res = get_json(f"https://registry.npmjs.org/-/v1/search?{urllib.parse.urlencode({'text': name, 'size': 5})}")
+    except (NotFound, FetchError):
+        return None
+    cands = [o["package"]["name"] for o in res.get("objects") or [] if isinstance(o, dict) and o.get("package")]
+    scored = sorted(((difflib.SequenceMatcher(None, name.lower(), c.lower()).ratio(), c) for c in cands if c != name), reverse=True)
+    return scored[0][1] if scored and scored[0][0] >= 0.75 else None
 
 
 SPEC_RX = {
