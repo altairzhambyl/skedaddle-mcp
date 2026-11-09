@@ -16,3 +16,10 @@ def test_heredoc_fed_to_an_interpreter_is_still_checked(tmp_path):
     for cmd in ("bash <<'EOF'\nnpm i zzq-evil\nEOF", "sh -s <<EOF\nnpm i zzq-evil\nEOF", "ssh host <<EOF\nnpm i zzq-evil\nEOF",
                 "cat > x <<EOF\nunterminated\nnpm i zzq-evil"):  # no closing delimiter: fail closed, keep the lines
         assert ("npm", "zzq-evil") in plan(cmd, str(tmp_path), {})[0], cmd
+
+
+def test_heredoc_sink_that_is_piped_or_run_later_is_checked(tmp_path):
+    """review of 8d18fb6: `cat <<EOF | bash` and `cat > x.sh <<EOF ... ; bash x.sh` execute the body."""
+    for cmd in ("cat <<'EOF' | bash\nnpm i zzq-evil\nEOF", "cat <<EOF | sh -s\nnpm i zzq-evil\nEOF",
+                "cat > x.sh <<'EOF'\nnpm i zzq-evil\nEOF\nbash x.sh", "tee run.sh <<EOF >/dev/null\nnpm i zzq-evil\nEOF\nsource run.sh"):
+        assert ("npm", "zzq-evil") in plan(cmd, str(tmp_path), {})[0], cmd

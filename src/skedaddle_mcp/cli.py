@@ -5,6 +5,9 @@
   skedaddle-mcp audit package-lock.json every exact pin in a lockfile
   skedaddle-mcp hook                    agent pre-install hook: hook JSON on stdin (Claude Code PreToolUse)
   skedaddle-mcp doctor [DIR]            which built-in package-manager protections are on, and how to turn them on
+  skedaddle-mcp stats                   what it blocked for you (local log, nothing is sent)
+  skedaddle-mcp install [--yes]         add the Claude Code hook (dry run without --yes; keeps a backup)
+  skedaddle-mcp trust [FILE]            review and trust this repo's .skedaddle.toml (the user, never the agent)
 Exit: 0 allow, 1 warn, 2 block, 3 error (could not verify).
 """
 
@@ -38,6 +41,10 @@ def main(argv: list[str] | None = None) -> int:
         rc = hook()
         sys.stdout.flush()
         os._exit(rc)  # do not wait for check threads abandoned at the time budget
+    if args[0] in ("stats", "install"):
+        from . import admin
+
+        return getattr(admin, args[0])(args[1:])
     if args[0] == "trust":
         import os
 

@@ -324,10 +324,22 @@ HEREDOC = re.compile(r"<<(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
 DATA_SINKS = re.compile(r"^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(cat|tee)\b")
 
 
+def _is_data_sink(line: str, command: str) -> bool:
+    """A heredoc is data only when a plain cat/tee writes it and nothing in the command runs the result: no pipe,
+    chain or substitution on that line, and the file it writes is not mentioned again (`; bash x.sh`, `source x.sh`)."""
+    if not DATA_SINKS.match(line) or re.search(r"[|;&]|\$\(|>\(|`", HEREDOC.sub("", line)):
+        return False
+    targets = [t for t in re.findall(r">>?\s*([^\s<>|;&]+)", HEREDOC.sub("", line)) if t != "/dev/null"]
+    m = re.match(r"^\s*tee\s+(?:-a\s+)?([^\s<>|;&]+)", line)
+    targets += [m[1]] if m else []
+    rest = command.split(line, 1)[1] if line in command else ""
+    return not any(os.path.basename(t) in rest for t in targets)
+
+
 def _strip_heredocs(command: str) -> str:
-    """Drop heredoc BODIES only when a data sink reads them (`cat > notes.md <<EOF`, `tee`): text written to a file is
-    not executed. A heredoc fed to anything else (bash, sh, ssh, python, ...) IS executed, so its lines stay and are
-    checked; an unterminated heredoc keeps its lines too (fails closed; review of 4f4d939)."""
+    """Drop heredoc BODIES only when a plain data sink writes them (`cat > notes.md <<EOF`): text written to a file
+    is not executed. Fed to anything else (bash, sh, ssh, python, a pipe) or written to a file the command later runs,
+    the body IS executed, so its lines stay and are checked; an unterminated heredoc keeps its lines (fails closed)."""
     out: list[str] = []
     held: list[str] = []
     delim, dash, sink = None, False, False
@@ -343,7 +355,7 @@ def _strip_heredocs(command: str) -> str:
         out.append(line)
         m = HEREDOC.search(line)
         if m and "<<<" not in line:
-            dash, delim, sink = bool(m[1]), m[3], bool(DATA_SINKS.match(line))
+            dash, delim, sink = bool(m[1]), m[3], _is_data_sink(line, command)
     return "\n".join(out + held)  # an unterminated heredoc's lines are kept
 
 
