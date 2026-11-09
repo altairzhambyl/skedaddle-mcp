@@ -324,39 +324,39 @@ HEREDOC = re.compile(r"<<(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
 DATA_SINKS = re.compile(r"^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(cat|tee)\b")
 
 
-def _is_data_sink(line: str, command: str) -> bool:
-    """A heredoc is data only when a plain cat/tee writes it and nothing in the command runs the result: no pipe,
-    chain or substitution on that line, and the file it writes is not mentioned again (`; bash x.sh`, `source x.sh`)."""
-    if not DATA_SINKS.match(line) or re.search(r"[|;&]|\$\(|>\(|`", HEREDOC.sub("", line)):
-        return False
-    targets = [t for t in re.findall(r">>?\s*([^\s<>|;&]+)", HEREDOC.sub("", line)) if t != "/dev/null"]
-    m = re.match(r"^\s*tee\s+(?:-a\s+)?([^\s<>|;&]+)", line)
-    targets += [m[1]] if m else []
-    rest = command.split(line, 1)[1] if line in command else ""
-    return not any(os.path.basename(t) in rest for t in targets)
+SENSITIVE_TARGET = re.compile(r"(^|/)(\.(bash|zsh|profile|bash_profile|zprofile|zshenv)rc?|\.profile|Makefile|makefile|"
+                              r"package\.json|pyproject\.toml|setup\.py|[^/]*\.(sh|bash|zsh|py|js|mjs|cjs|ts|ps1))$|\.git/hooks/")
 
 
 def _strip_heredocs(command: str) -> str:
-    """Drop heredoc BODIES only when a plain data sink writes them (`cat > notes.md <<EOF`): text written to a file
-    is not executed. Fed to anything else (bash, sh, ssh, python, a pipe) or written to a file the command later runs,
-    the body IS executed, so its lines stay and are checked; an unterminated heredoc keeps its lines (fails closed)."""
-    out: list[str] = []
-    held: list[str] = []
-    delim, dash, sink = None, False, False
-    for line in command.split("\n"):
-        if delim is not None:
-            if (line.lstrip("\t") if dash else line) == delim:
-                if not sink:
-                    out.extend(held)
-                held, delim = [], None
-            else:
-                held.append(line)
-            continue
-        out.append(line)
-        m = HEREDOC.search(line)
-        if m and "<<<" not in line:
-            dash, delim, sink = bool(m[1]), m[3], _is_data_sink(line, command)
-    return "\n".join(out + held)  # an unterminated heredoc's lines are kept
+    """A heredoc body is data, and skipped, ONLY when the whole command is one plain `cat`/`tee` writing it to an
+    ordinary file: no other command before or after, no line continuation, no pipe/chain/substitution, a literal
+    target that is not a script, rc file, git hook or build file. Anything else keeps the body and checks it
+    (fails closed; every narrower rule had a bypass, reviews of 4f4d939, 8d18fb6, 2bc5857)."""
+    lines = command.split("\n")
+    first = lines[0]
+    m = HEREDOC.search(first)
+    if not m or "<<<" in first or "\\\n" in command or not DATA_SINKS.match(first):
+        return command
+    head = HEREDOC.sub("", first)
+    if re.search(r"[|;&`]|\$", head):
+        return command
+    dash, delim = bool(m[1]), m[3]
+    end = next((k for k, ln in enumerate(lines[1:], 1) if (ln.lstrip("\t") if dash else ln) == delim), None)
+    if end is None or any(ln.strip() for ln in lines[end + 1:]):
+        return command  # unterminated, or something runs after it
+    try:
+        words = shlex.split(head)
+    except ValueError:
+        return command
+    targets = [w for k, w in enumerate(words) if k and words[k - 1] in (">", ">>")]
+    targets += [w[1:].lstrip(">") for w in words if w.startswith(">") and len(w.lstrip(">")) > 0]
+    if os.path.basename(words[0]) == "tee":
+        targets += [w for w in words[1:] if not w.startswith("-") and not w.startswith(">")]
+    targets = [t for t in targets if t != "/dev/null"]
+    if not targets or any(SENSITIVE_TARGET.search(t) for t in targets):
+        return command
+    return first  # the body is text written to a file
 
 
 def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
