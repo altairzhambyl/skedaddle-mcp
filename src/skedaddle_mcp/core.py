@@ -13,12 +13,14 @@ import urllib.parse
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from . import http
 from .http import FetchError, NotFound, get_json
 
 ECOSYSTEMS = {"npm": "npm", "pypi": "PyPI", "crates": "crates.io", "cargo": "crates.io"}
 FRESH_PACKAGE_DAYS = 30  # a package this new is the typical typosquat / slopsquat vehicle
 FRESH_RELEASE_DAYS = 3  # most malicious releases are found and pulled within days (cooldown, like pnpm minimumReleaseAge)
 LOW_WEEKLY_DOWNLOADS = 50
+NEW_PUBLISHER_DAYS = 90
 # Ordinary CVEs (no fix, or below HIGH) are not reported unless asked: noise is the #1 reason developers mute security
 # tools (npm maintainer survey, arXiv 2601.20240). A HIGH/CRITICAL CVE with a fixed version blocks, with the fix.
 VERBOSE_CVES = os.environ.get("SKEDADDLE_ALL_CVES") == "1"
@@ -46,6 +48,7 @@ class Report:
     version: str | None
     verdict: str = "allow"  # allow | warn | block | error
     findings: list[Finding] = field(default_factory=list)
+    suggestion: dict[str, str] | None = None  # what to do instead: {"version": ...} or {"did_you_mean": ...}
 
     def add(self, f: Finding) -> None:
         self.findings.append(f)
@@ -171,6 +174,29 @@ def _fresh_npm_dep(names: list[str], cap: int = 10) -> str | None:
     return None
 
 
+def _trim_npm_packument(doc: Any) -> Any:
+    """The fields npm checks read, per version: publisher, provenance presence, install hooks, dependencies, gitHead."""
+    if not isinstance(doc, dict) or "versions" not in doc:
+        return doc
+    out = {k: doc.get(k) for k in ("name", "dist-tags", "time")}
+    out["versions"] = {}
+    for v, m in (doc.get("versions") or {}).items():
+        if not isinstance(m, dict):
+            continue
+        att = (m.get("dist") or {}).get("attestations")
+        out["versions"][v] = {
+            "_npmUser": {"name": (m.get("_npmUser") or {}).get("name")},
+            "dist": {"attestations": {"present": True}} if att else {},
+            "scripts": {k: s for k, s in (m.get("scripts") or {}).items() if k in INSTALL_HOOKS},
+            "dependencies": m.get("dependencies") or {},
+            "gitHead": m.get("gitHead"),
+        }
+    return out
+
+
+http.TRIMMERS.append(("https://registry.npmjs.org/", _trim_npm_packument))
+
+
 def _npm_publisher(meta: dict[str, Any]) -> str | None:
     return (meta.get("_npmUser") or {}).get("name")
 
@@ -182,8 +208,20 @@ def _npm_attested(meta: dict[str, Any]) -> bool:
 def npm_findings(rep: Report, name: str, version: str | None) -> str | None:
     url = f"https://registry.npmjs.org/{urllib.parse.quote(name, safe='@')}".replace("%40", "@", 1)
     doc = get_json(url)
+    if not version:
+        # an unpinned install gets TODAY's latest: never judge a cached older one (review of cbb7684: the axios
+        # 1.14.1 window was ~3 hours). dist-tags is a tiny live request; a different latest refetches the packument.
+        try:
+            live = get_json(f"https://registry.npmjs.org/-/package/{urllib.parse.quote(name, safe='@')}/dist-tags", fresh=True)
+        except NotFound:
+            live = None
+        except FetchError:
+            live = {}
+        if live is not None and live.get("latest") != (doc.get("dist-tags") or {}).get("latest"):
+            doc = get_json(url, fresh=True)
     times: dict[str, str] = doc.get("time") or {}
     versions: dict[str, Any] = doc.get("versions") or {}
+    rep.__dict__["_versions"] = set(versions)  # not a dataclass field: used only to name a fix that exists
     version = version or (doc.get("dist-tags") or {}).get("latest")
     rep.version = version
     age = _age_days(times.get("created"))
@@ -277,10 +315,14 @@ def npm_findings(rep: Report, name: str, version: str | None) -> str | None:
         if pub and pub != "npm" and pub not in seen and not _npm_attested(meta):
             pv, tv = _semver(prior[0]), _semver(version)
             major_bump = bool(pv and tv and tv[0] > pv[0])  # release-process changes cluster on majors (typescript 7)
+            # a takeover matters while the release is new; years later a compromise would be known (OSV), and old
+            # maintainer turnover is noise (power-user eval: express@4.21.2 warned for a 2024 handover)
+            rel = _age_days(times.get(version))
+            recent_release = rel is None or rel < NEW_PUBLISHER_DAYS
             rep.add(
                 Finding(
                     "new-publisher",
-                    "info" if major_bump else "warn",
+                    "info" if major_bump or not recent_release else "warn",
                     f"{name}@{version} was published by '{pub}', who published none of the previous {len(recent)} releases "
                     f"({', '.join(sorted(p for p in seen if p))}), without provenance",
                     {
@@ -367,7 +409,7 @@ def npm_findings(rep: Report, name: str, version: str | None) -> str | None:
 # ---------------------------------------------------------------- PyPI / crates
 def pypi_findings(rep: Report, name: str, version: str | None) -> str | None:
     url = f"https://pypi.org/pypi/{urllib.parse.quote(name)}/json"
-    doc = get_json(url)
+    doc = get_json(url, fresh=not version)  # unpinned: today's latest, never a cached older one
     version = version or (doc.get("info") or {}).get("version")
     rep.version = version
     rels = doc.get("releases") or {}
@@ -509,10 +551,68 @@ def crates_findings(rep: Report, name: str, version: str | None) -> str | None:
     return version
 
 
-def check_package(ecosystem: str, name: str, version: str | None = None) -> Report:
-    """Check one package (optionally one exact version). Never raises: a failure is verdict 'error' with the reason."""
+def _internal_check(rep: Report, eco: str, name: str) -> Report:
+    """An internal name must NOT exist on the public registry: if it does, a public package is shadowing it (dependency
+    confusion, Birsan 2021: 35+ companies incl. Apple, Microsoft, Netflix). Absent = internal = not 'hallucinated'."""
+    q = urllib.parse.quote(name, safe="@")
+    url = {"npm": f"https://registry.npmjs.org/{q}", "PyPI": f"https://pypi.org/pypi/{urllib.parse.quote(name)}/json",
+           "crates.io": f"https://crates.io/api/v1/crates/{urllib.parse.quote(name)}"}[eco]
+    try:
+        get_json(url)
+    except NotFound:
+        rep.add(Finding("internal", "info", f"{name} is an internal package name and is not on the public registry (good)", {}, url))
+        return rep.finish()
+    except FetchError as e:
+        rep.verdict = "error"
+        rep.add(Finding("unverifiable", "warn", f"could not check whether internal name {name} is taken publicly ({e})", {}, url))
+        return rep
+    rep.add(Finding("dependency-confusion", "block",
+                    f"{name} matches your internal package names but EXISTS on the public registry: an install that resolves "
+                    "publicly gets the attacker's package (dependency confusion). Install it from your internal registry with "
+                    "the scope/index pinned, and report the public name to your security team.", {}, url))
+    return rep.finish()
+
+
+def _prefetch(eco: str, name: str, version: str | None) -> None:
+    """Fire the independent lookups at once so the sequential checks below read them from the disk cache: a cold
+    check costs one round trip instead of three. Best effort: any failure here is retried by the real lookup."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from .http import _cache_dir
+
+    if os.environ.get("SKEDADDLE_FIXTURES") or _cache_dir() is None:
+        return
+    q = urllib.parse.quote(name, safe="@")
+    jobs: list[tuple[str, dict[str, Any] | None]] = []
+    if eco == "npm":
+        jobs += [(f"https://registry.npmjs.org/{q}", None), (f"https://api.npmjs.org/downloads/point/last-week/{q}", None)]
+    elif eco == "PyPI":
+        jobs.append((f"https://pypi.org/pypi/{urllib.parse.quote(name)}/json", None))
+    if version:
+        jobs.append(("https://api.osv.dev/v1/query", {"package": {"name": name, "ecosystem": eco}, "version": version}))
+
+    def one(job: tuple[str, dict[str, Any] | None]) -> None:
+        try:
+            get_json(job[0], job[1])
+        except (NotFound, FetchError):
+            pass
+
+    with ThreadPoolExecutor(max_workers=len(jobs) or 1) as ex:
+        list(ex.map(one, jobs))
+
+
+def check_package(ecosystem: str, name: str, version: str | None = None, cfg: Any = None) -> Report:
+    """Check one package (optionally one exact version). Never raises: a failure is verdict 'error' with the reason.
+    cfg (skedaddle_mcp.config.Config): time-boxed exceptions and internal package names (dependency confusion)."""
     eco = ECOSYSTEMS.get(ecosystem.lower())
     rep = Report(ecosystem, name, version)
+    if cfg is not None and eco is not None:
+        exc = cfg.allowed(ecosystem, name, version)
+        if exc:
+            rep.add(Finding("exception", "info", f"allowed by policy until {exc.get('expires')}: {exc.get('reason') or 'no reason'}", dict(exc)))
+            return rep.finish()
+        if cfg.internal(ecosystem.lower(), name):
+            return _internal_check(rep, eco, name)
     if eco is None:
         rep.verdict = "error"
         rep.add(
@@ -523,6 +623,7 @@ def check_package(ecosystem: str, name: str, version: str | None = None) -> Repo
             )
         )
         return rep
+    _prefetch(eco, name, version)
     try:
         fn = {"npm": npm_findings, "PyPI": pypi_findings, "crates.io": crates_findings}[eco]
         version = fn(rep, name, version)
@@ -535,6 +636,9 @@ def check_package(ecosystem: str, name: str, version: str | None = None) -> Repo
                 "(slopsquatting)",
             )
         )
+        close = _did_you_mean(eco, name)
+        if close:
+            rep.suggestion = {"did_you_mean": close}
         return rep.finish()
     except FetchError as e:
         rep.verdict = "error"
@@ -559,7 +663,50 @@ def check_package(ecosystem: str, name: str, version: str | None = None) -> Repo
         if rep.verdict != "block":
             rep.verdict = "error"
         return rep
-    return rep.finish()
+    rep.finish()
+    fix = _fixing_version(rep)
+    if fix:
+        rep.suggestion = {"version": fix}
+    return rep
+
+
+def _vkey(v: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in re.findall(r"\d+", v.split("-")[0])[:4]) or (0,)
+
+
+def _fixing_version(rep: Report) -> str | None:
+    """One version that fixes EVERY blocking advisory, preferring the current major line (next 15.0.0 -> 15.5.28, not
+    16.x). Only when CVEs are the whole reason for the block (a malicious package has no 'fixed' version)."""
+    blocking = [f for f in rep.findings if f.severity == "block"]
+    if not blocking or not rep.version or any(f.signal != "cve" for f in blocking):
+        return None
+    cur = _vkey(rep.version)
+    need: list[tuple[int, ...]] = []
+    for f in blocking:
+        later = sorted((_vkey(x), x) for x in f.evidence.get("fixed") or [] if _vkey(x) > cur)
+        same = [k for k, _ in later if k[0] == cur[0]]
+        if not later:
+            return None  # one advisory has no fix above this version: nothing honest to suggest
+        need.append(same[0] if same else later[0][0])
+    target = max(need)
+    known = rep.__dict__.get("_versions") or set()
+    names = sorted((v for v in known if _vkey(v) >= target and _vkey(v)[0] == target[0] and not re.search(r"[a-z]", v)), key=_vkey)
+    return names[0] if names else ".".join(map(str, target))
+
+
+def _did_you_mean(eco: str, name: str) -> str | None:
+    """The closest real package name for a hallucinated/mistyped one (npm search; PyPI has no search API)."""
+    import difflib
+
+    if eco != "npm":
+        return None
+    try:
+        res = get_json(f"https://registry.npmjs.org/-/v1/search?{urllib.parse.urlencode({'text': name, 'size': 5})}")
+    except (NotFound, FetchError):
+        return None
+    cands = [o["package"]["name"] for o in res.get("objects") or [] if isinstance(o, dict) and o.get("package")]
+    scored = sorted(((difflib.SequenceMatcher(None, name.lower(), c.lower()).ratio(), c) for c in cands if c != name), reverse=True)
+    return scored[0][1] if scored and scored[0][0] >= 0.75 else None
 
 
 SPEC_RX = {

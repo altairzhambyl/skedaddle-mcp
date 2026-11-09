@@ -46,8 +46,14 @@ skedaddle-mcp --version
 
 ### As a Claude Code pre-install hook (enforcing — recommended)
 
-An MCP tool is advisory: the model may not call it. A hook runs on every shell command. Add to
-`~/.claude/settings.json`:
+An MCP tool is advisory: the model may not call it. A hook runs on every shell command.
+
+```bash
+skedaddle-mcp install          # shows the change to ~/.claude/settings.json
+skedaddle-mcp install --yes    # writes it (keeps a backup and your existing hooks)
+```
+
+Or add it by hand to `~/.claude/settings.json`:
 
 ```json
 {
@@ -70,7 +76,20 @@ tarball source, a custom registry or index (`--registry`, `-i`, `--extra-index-u
 `PIP_INDEX_URL`, `UV_INDEX_URL`, an index line inside a requirements file), or more than 50 packages in one command.
 A bare `npm install` / `npm ci` after the agent edited `package.json` or the lockfile is checked too: dependencies the
 lockfile does not pin yet, and lockfile entries that changed since git HEAD. `npm:` aliases are checked as the real
-package; `cd dir && ...` and `sh -c '...'` are followed.
+package; `cd dir && ...`, `sh -c '...'` and heredocs fed to a shell are followed. Registering an MCP server
+(`claude mcp add NAME -- npx -y pkg`, `mcp add-json`) is checked like an install: it is a package that runs with your
+agent's rights (postmark-mcp, 2025).
+
+A block says what to do instead, so the agent can fix its own command: one version that fixes every blocking
+advisory (`next@15.0.0` -> `next@15.5.28`, same major line when possible), or the closest real npm name for a
+hallucinated one ("did you mean `react-dom`?").
+
+Speed: answers are cached on disk (`~/.cache/skedaddle`, 0700; 10 min for registries and OSV). A repeat check takes
+about 0.2 s; a first check is one round trip to the registries (about 2 s; 2.7 s for `next`, whose metadata is 31 MB).
+An install without a version always reads today's `latest` live, so a cache never hides a release that just shipped.
+
+`skedaddle-mcp stats` shows what it did for you: installs checked, blocked, asked, by kind. The log is local
+(`~/.local/state/skedaddle/decisions.jsonl`, 0600, secrets redacted); nothing is sent anywhere.
 
 ### As an MCP server (any MCP client)
 
@@ -90,6 +109,33 @@ skedaddle-mcp doctor                       # which package-manager protections a
 
 Exit codes: 0 allow, 1 warn, 2 block, 3 could not verify.
 
+## For teams: mirrors, internal packages, exceptions
+
+Commit a `.skedaddle.toml` at the repo root (or use `~/.config/skedaddle/config.toml` for yourself):
+
+```toml
+trusted_registries = ["https://artifactory.corp.example/api/npm/"]  # your mirror: no longer "unverifiable",
+                                                                    # packages are still checked by name
+internal_scopes = ["@corp"]   # your npm scopes
+internal_names  = ["corp-*"]  # internal names in any ecosystem
+
+[[allow]]                     # a reviewed exception, always with an end date
+package = "npm:left-pad@1.3.0"
+reason  = "SEC-123: vendored fork, reviewed"
+expires = "2026-12-31"
+```
+
+- **Dependency confusion.** An internal name that *exists* on the public registry is blocked: a resolver that falls
+  back to the public registry would install the attacker's package (Alex Birsan, 2021: Apple, Microsoft, Netflix,
+  PayPal and 30+ others). An internal name that is absent publicly is fine, not "hallucinated".
+- **The repo file is not trusted until you trust it.** A `.skedaddle.toml` can arrive in a malicious pull request or
+  be written by the agent itself, and it only relaxes checks. It applies after you run `skedaddle-mcp trust`, which
+  records the hash of exactly that content; any edit voids it. The hook asks you whenever a command runs `trust`,
+  writes skedaddle's policy or state files, or sets `SKEDADDLE_*`. The hook sees shell commands only, so also deny
+  the agent's file tools on these paths in `~/.claude/settings.json` (an `Edit` rule covers Write and Edit, and Claude
+  Code also applies it to `sed`/`tee`/redirections; a `Write(...)` rule would not match anything):
+  `"permissions": {"deny": ["Edit(**/.skedaddle.toml)", "Edit(~/.config/skedaddle/**)", "Edit(~/.local/state/skedaddle/**)"]}`
+
 ## Signals
 
 | Signal | Severity | Ecosystems | What it means |
@@ -101,7 +147,8 @@ Exit codes: 0 allow, 1 warn, 2 block, 3 could not verify.
 | `install-script-added` | block | npm | a `preinstall`/`install`/`postinstall` script appears that the previous release did not have |
 | `cve` | block | all | HIGH/CRITICAL in this exact version **and** a fixed version exists (`SKEDADDLE_ALL_CVES=1` reports the rest as info) |
 | `fresh-package` | block | all | the package itself is under 30 days old |
-| `new-publisher` | warn | npm, PyPI | published by an account / trusted publisher that published none of the recent releases, without provenance (info on a major bump) |
+| `dependency-confusion` | block | all | one of your internal names exists on the public registry |
+| `new-publisher` | warn | npm, PyPI | a release under 90 days old, by an account / trusted publisher that published none of the recent releases, without provenance (info on a major bump or an older release) |
 | `deps-added-in-patch`, `no-git-head` | warn | npm | a patch release adds dependencies; not published from a git checkout |
 | `fresh-release` | info (warn next to another signal) | all | the version is under 3 days old |
 | `low-downloads` | warn | npm | under 50 downloads last week |
@@ -123,6 +170,14 @@ uv `exclude-newer`. A cooldown alone would have stopped the axios and litellm re
 | [pnpm](https://pnpm.io/settings/dependency-resolution) settings | cooldown, trust downgrade, build scripts | only when pnpm is the package manager and configured |
 | [Aikido safe-chain](https://github.com/AikidoSec/safe-chain), [Socket sfw](https://github.com/SocketDev/sfw-free) | malware gating as an install wrapper, no account | different licences; skedaddle adds release-integrity signals |
 | [Socket MCP](https://github.com/SocketDev/socket-mcp) | package scores over MCP | needs a Socket sign-in per call |
+
+## Scope
+
+skedaddle answers one question: *is what the agent is about to install safe?* Packages and MCP servers, from
+registries, mirrors and lockfiles. It deliberately does not police the rest of what an agent does (editing its own
+settings or hooks, permission-bypass flags, destructive or exfiltrating commands). Those are real and documented
+(CVE-2025-53773, CVE-2025-54135/54136, the Nx "s1ngularity" malware launching AI CLIs with bypass flags) and belong in
+a separate, focused guard rather than in this tool.
 
 ## Threat model
 

@@ -60,9 +60,13 @@ def test_decide_denies_a_hallucinated_package(registry, tmp_path):
 
 
 def test_decide_warns_without_blocking(registry, tmp_path):
-    out = decide("npm install event-stream@3.3.5", str(tmp_path))
+    from conftest import npm_doc
+
+    rel = [("1.0.0", "2020-01-01T00:00:00Z", {}), ("1.0.1", "2099-01-01T00:00:00Z", {"_npmUser": {"name": "someone-new"}})]
+    registry("https://registry.npmjs.org/pkg-w", npm_doc("pkg-w", rel))  # a fresh release by a new publisher
+    out = decide("npm install pkg-w@1.0.1", str(tmp_path))
     hs = out["hookSpecificOutput"]
-    assert "permissionDecision" not in hs and "right9ctrl" in hs["additionalContext"]
+    assert "permissionDecision" not in hs and "someone-new" in hs["additionalContext"]
 
 
 def test_decide_silent_on_non_install(registry, tmp_path):
@@ -340,3 +344,16 @@ def test_shell_cluster_with_o_and_c(tmp_path):
     cwd = str(tmp_path)
     assert ("npm", "left-pad") in plan("bash -oc pipefail 'npm i left-pad'", cwd, {})[0]
     assert ("npm", "left-pad") in plan("bash -co pipefail 'npm i left-pad'", cwd, {})[0]
+
+
+# ---- MCP servers are packages (postmark-mcp 2025: one BCC line added in a patch release) ----------------------------
+def test_mcp_server_registration_is_an_install(tmp_path):
+    from skedaddle_mcp.hook import plan
+
+    cwd = str(tmp_path)
+    assert plan("claude mcp add github -- npx -y @modelcontextprotocol/server-github", cwd, {})[0] == [
+        ("npm", "@modelcontextprotocol/server-github")]
+    assert plan("claude mcp add --scope user fetch -- uvx mcp-server-fetch", cwd, {})[0] == [("pypi", "mcp-server-fetch")]
+    assert plan('claude mcp add-json pm \'{"command":"npx","args":["-y","postmark-mcp@1.0.16"]}\'', cwd, {})[0] == [
+        ("npm", "postmark-mcp@1.0.16")]
+    assert plan("claude mcp list", cwd, {})[0] == []

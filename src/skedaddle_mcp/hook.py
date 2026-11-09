@@ -22,6 +22,7 @@ import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Any
 
+from .config import load as load_config
 from .core import check_package, parse_spec
 
 SEP = re.compile(r"\s*(?:&&|\|\||;|\||\n)\s*")
@@ -111,7 +112,17 @@ REGISTRY_FLAGS = {
 OFFICIAL_HOSTS = {"registry.npmjs.org": "", "registry.yarnpkg.com": "", "pypi.org": "/simple", "files.pythonhosted.org": ""}
 
 
+_ACTIVE: list = [None]  # the Config of the command being planned (trusted mirrors count as official)
+
+
 def official(url: str) -> bool:
+    cfg = _ACTIVE[0]
+    if cfg is not None and cfg.trusted(url):
+        return True
+    return _public_official(url)
+
+
+def _public_official(url: str) -> bool:
     """https, no user:password@, an exact official host (pypi.org only under /simple)."""
     try:
         u = urllib.parse.urlsplit(url.strip())
@@ -121,6 +132,8 @@ def official(url: str) -> bool:
         return False
     prefix = OFFICIAL_HOSTS[u.hostname]
     return not prefix or u.path == prefix or u.path.startswith(prefix + "/")
+
+
 REGISTRY_ENV = (
     "npm_config_registry",
     "NPM_CONFIG_REGISTRY",
@@ -202,11 +215,20 @@ def _unwrap(seg: str) -> tuple[list[str], dict[str, str]]:
             for j, t in enumerate(w[1:], 1):
                 if not t.startswith("-"):
                     break
-                split = w[j + 1] if t in ("-S", "--split-string") and j + 1 < len(w) else (
-                    t.split("=", 1)[1] if t.startswith("--split-string=") else t[2:] if t.startswith("-S") and len(t) > 2 else None)
+                split = (
+                    w[j + 1]
+                    if t in ("-S", "--split-string") and j + 1 < len(w)
+                    else (
+                        t.split("=", 1)[1]
+                        if t.startswith("--split-string=")
+                        else t[2:]
+                        if t.startswith("-S") and len(t) > 2
+                        else None
+                    )
+                )
                 if split is not None:
                     inner, more = _unwrap(split)
-                    rest = w[j + 2:] if t in ("-S", "--split-string") else w[j + 1:]
+                    rest = w[j + 2 :] if t in ("-S", "--split-string") else w[j + 1 :]
                     return inner + rest, {**assigns, **more}
         if base in WRAPPER_OPTS:
             i = 1
@@ -275,8 +297,7 @@ def _registry_override(flags: dict[str, list[str]], env: dict[str, str]) -> str 
         (
             f
             for f in flags
-            if (f in REGISTRY_FLAGS or re.match(r"^--@[^:]+:registry$", f))
-            and not all(official(v) for v in flags[f] or ["?"])
+            if (f in REGISTRY_FLAGS or re.match(r"^--@[^:]+:registry$", f)) and not all(official(v) for v in flags[f] or ["?"])
         ),
         None,
     )
@@ -288,6 +309,7 @@ def _registry_override(flags: dict[str, list[str]], env: dict[str, str]) -> str 
 def plan(command: str, cwd: str, env: dict[str, str] | None = None, depth: int = 0) -> tuple[list[tuple[str, str]], list[str]]:
     """([(ecosystem, spec)] to check, [reasons to ask the user]) for a shell command."""
     p = Plan(dict(os.environ if env is None else env))
+    _ACTIVE[0] = load_config(cwd)
     _walk(command, cwd, p, depth)
     tg = list(dict.fromkeys(p.targets))
     if len(tg) > MAX_TARGETS:
@@ -296,13 +318,84 @@ def plan(command: str, cwd: str, env: dict[str, str] | None = None, depth: int =
     return tg, p.asks
 
 
+HEREDOC = re.compile(r"<<(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
+
+
+DATA_SINKS = re.compile(r"^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(cat|tee)\b")
+
+
+DATA_FILE = re.compile(r"\.(md|markdown|txt|rst|csv|tsv|log|json)$", re.IGNORECASE)
+NOT_DATA = re.compile(r"(^|/)(package\.json|composer\.json|\.mcp\.json|tsconfig[^/]*\.json|settings[^/]*\.json|tasks\.json|"
+                      r"launch\.json|devcontainer\.json)$|(^|/)\.(claude|cursor|vscode|codex|git|github)/", re.IGNORECASE)
+
+
+def _strip_heredocs(command: str) -> str:
+    """A heredoc body is data, and skipped, ONLY when the whole command is one plain `cat`/`tee` writing it to an
+    ordinary file: no other command before or after, no line continuation, no pipe/chain/substitution, a literal
+    target that is not a script, rc file, git hook or build file. Anything else keeps the body and checks it
+    (fails closed; every narrower rule had a bypass, reviews of 4f4d939, 8d18fb6, 2bc5857)."""
+    lines = command.split("\n")
+    first = lines[0]
+    m = HEREDOC.search(first)
+    if not m or "<<<" in first or "\\\n" in command or not DATA_SINKS.match(first):
+        return command
+    head = HEREDOC.sub("", first)
+    if re.search(r"[|;&`#\\'\"]|\$", head):
+        return command  # quotes, comments, escapes: the tokenization is ambiguous, so the body is checked
+    dash, delim = bool(m[1]), m[3]
+    end = next((k for k, ln in enumerate(lines[1:], 1) if (ln.lstrip("\t") if dash else ln) == delim), None)
+    if end is None or any(ln.strip() for ln in lines[end + 1:]):
+        return command  # unterminated, or something runs after it
+    try:
+        words = shlex.split(head)
+    except ValueError:
+        return command
+    targets = [w for k, w in enumerate(words) if k and words[k - 1] in (">", ">>")]
+    targets += [w[1:].lstrip(">") for w in words if w.startswith(">") and len(w.lstrip(">")) > 0]
+    if os.path.basename(words[0]) == "tee":
+        targets += [w for w in words[1:] if not w.startswith("-") and not w.startswith(">")]
+    targets = [t for t in targets if t != "/dev/null"]
+    if not targets or not all(DATA_FILE.search(t) and not NOT_DATA.search(t) for t in targets):
+        return command  # only plain data files are inert (allowlist; review of 6382c12)
+    return first  # the body is text written to a file
+
+
 def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
-    for seg in SEP.split(command):
+    for seg in SEP.split(_strip_heredocs(command)):
         w, assigns = _unwrap(seg)
         env = {**p.env, **assigns}
+        guard = _self_protection(seg, w, assigns)
+        if guard:
+            p.asks.append(guard)
+            continue
         if not w:
             continue
         prog, args = os.path.basename(w[0]), w[1:]
+        if prog in ("claude", "codex", "gemini", "cursor-agent") and args[:2] in (["mcp", "add"], ["mcp", "add-json"]):
+            # registering an MCP server is installing a package that runs with the agent's rights (postmark-mcp 2025)
+            if args[1] == "add":
+                if "--" in args:
+                    inner = args[args.index("--") + 1 :]
+                else:  # claude mcp add [opts] NAME COMMAND [ARGS...]
+                    rest, i = args[2:], 0
+                    while i < len(rest) and rest[i].startswith("-"):
+                        i += 2 if rest[i] in ("-s", "--scope", "-e", "--env", "-t", "--transport", "-H", "--header") else 1
+                    inner = rest[i + 1 :]
+                    if inner and re.match(r"^https?://", inner[0]):
+                        inner = []  # a remote (http/sse) server: nothing is installed locally
+                if inner and depth < 3:
+                    _walk(shlex.join(inner), cwd, p, depth + 1)
+            elif args[1] == "add-json":
+                blob = next((a for a in args[2:] if a.lstrip().startswith("{")), None)
+                try:
+                    srv = json.loads(blob) if blob else {}
+                except ValueError:
+                    srv = {}
+                if srv.get("command") and depth < 3:
+                    _walk(shlex.join([str(srv["command"]), *[str(x) for x in srv.get("args") or []]]), cwd, p, depth + 1)
+                elif blob and not srv.get("url"):
+                    p.asks.append("MCP server config that skedaddle cannot read: cannot tell what it runs")
+            continue
         if prog == "cd" and args:
             cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(args[0])))
             continue
@@ -371,10 +464,32 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
             for o in fl.get("--with", []):
                 p.add("pypi", o)
         elif prog == "cargo" and args[:1] in (["add"], ["install"]):
-            ops, fl = _operands(args[1:], {"--registry", "--index", "--git", "--config", "--path", "-p", "--package", "--features", "-F",
-                                           "--rename", "--target", "--root", "--version", "--vers", "--branch", "--tag", "--rev"})
+            ops, fl = _operands(
+                args[1:],
+                {
+                    "--registry",
+                    "--index",
+                    "--git",
+                    "--config",
+                    "--path",
+                    "-p",
+                    "--package",
+                    "--features",
+                    "-F",
+                    "--rename",
+                    "--target",
+                    "--root",
+                    "--version",
+                    "--vers",
+                    "--branch",
+                    "--tag",
+                    "--rev",
+                },
+            )
             src = next((f for f in ("--registry", "--index", "--git", "--config") if f in fl), None)
-            src = src or next((k for k in env if k.startswith(("CARGO_REGISTRIES_", "CARGO_SOURCE_")) or k == "CARGO_REGISTRY_DEFAULT"), None)
+            src = src or next(
+                (k for k in env if k.startswith(("CARGO_REGISTRIES_", "CARGO_SOURCE_")) or k == "CARGO_REGISTRY_DEFAULT"), None
+            )
             src = src or _cargo_config_source(cwd, env)
             if src:
                 p.asks.append(f"cargo source override ({src}): crates would come from a source skedaddle does not check")
@@ -397,6 +512,25 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
             _reg(p, fl, env)
             for s in (fl.get("--from", []) or ops[:1]) + fl.get("--with", []):
                 p.add("pypi", s)
+
+
+POLICY_PATHS = (".skedaddle.toml", "skedaddle/config.toml", "skedaddle/trusted.json", "skedaddle/decisions.jsonl")
+READ_ONLY = {"cat", "less", "more", "head", "tail", "grep", "rg", "ls", "stat", "wc", "diff", "file", "bat", "jq"}
+
+
+def _self_protection(seg: str, words: list[str], assigns: dict[str, str]) -> str | None:
+    """The agent must not relax its own checks: trusting a repo policy, writing skedaddle's policy/state files, or
+    setting SKEDADDLE_* for itself are the user's actions (inside-out: an agent editing its own guard)."""
+    prog = os.path.basename(words[0]) if words else ""
+    if any(k.startswith("SKEDADDLE_") for k in assigns) or (prog == "export" and "SKEDADDLE_" in seg):
+        return "setting SKEDADDLE_* changes skedaddle's own behaviour: that is the user's decision, not the agent's"
+    names = [os.path.basename(x) for x in words]
+    runs_us = any(n in ("skedaddle-mcp", "skedaddle_mcp", "skedaddle_mcp.cli") for n in names) or "skedaddle" in seg
+    if runs_us and "trust" in names:
+        return "`skedaddle-mcp trust` approves a policy that relaxes checks: only the user may run it"
+    if any(pth in seg for pth in POLICY_PATHS) and (prog not in READ_ONLY or re.search(r">|\btee\b", seg)):
+        return "this command touches skedaddle's policy or state files: changing them is the user's decision"
+    return None
 
 
 def _reg(p: Plan, flags: dict[str, list[str]], env: dict[str, str], npmrc_dir: str | None = None) -> None:
@@ -492,7 +626,8 @@ def _python_project_source(cwd: str, flags: dict[str, list[str]] | None = None) 
     base = os.path.join(cwd, (flags.get("--project") or flags.get("--directory") or ["."])[0])
     proj = next((d for d in _parents(base) if os.path.exists(os.path.join(d, "pyproject.toml"))), None)
     files = ([(os.path.join(proj, "pyproject.toml"), True), (os.path.join(proj, "uv.toml"), False)] if proj else []) + [
-        (os.path.join(os.path.expanduser("~"), ".config", "uv", "uv.toml"), False)]
+        (os.path.join(os.path.expanduser("~"), ".config", "uv", "uv.toml"), False)
+    ]
     for path, is_pyproject in files:
         doc = _toml(path)
         if doc is None:
@@ -521,8 +656,11 @@ def _lock_entries(text: str) -> dict[str, tuple[str, str]]:
         pk = (json.loads(text) if text else {}).get("packages") or {}
     except ValueError:
         return {}
-    return {k.rsplit("node_modules/", 1)[-1]: (m["version"], str(m.get("resolved") or ""))
-            for k, m in pk.items() if "node_modules/" in k and isinstance(m, dict) and m.get("version")}
+    return {
+        k.rsplit("node_modules/", 1)[-1]: (m["version"], str(m.get("resolved") or ""))
+        for k, m in pk.items()
+        if "node_modules/" in k and isinstance(m, dict) and m.get("version")
+    }
 
 
 def _lock_versions(text: str) -> dict[str, str]:
@@ -532,8 +670,14 @@ def _lock_versions(text: str) -> dict[str, str]:
 def _git_head_file(cwd: str, rel: str) -> str | None:
     """File content at git HEAD, or None. `cat-file blob` runs no textconv/filters; system config is ignored."""
     try:
-        r = subprocess.run(["git", "-C", cwd, "-c", "core.fsmonitor=false", "cat-file", "blob", f"HEAD:./{rel}"], check=False,
-                           capture_output=True, text=True, timeout=5, env={**os.environ, "GIT_CONFIG_NOSYSTEM": "1"})
+        r = subprocess.run(
+            ["git", "-C", cwd, "-c", "core.fsmonitor=false", "cat-file", "blob", f"HEAD:./{rel}"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env={**os.environ, "GIT_CONFIG_NOSYSTEM": "1"},
+        )
     except (OSError, subprocess.SubprocessError):
         return None
     return r.stdout if r.returncode == 0 else None
@@ -555,7 +699,11 @@ def _npm_lock_changes(cwd: str, p: Plan) -> list[str]:
                 pkg = json.load(fh)
         except (OSError, ValueError):
             pkg = {}
-        direct = {**(pkg.get("dependencies") or {}), **(pkg.get("devDependencies") or {}), **(pkg.get("optionalDependencies") or {})}
+        direct = {
+            **(pkg.get("dependencies") or {}),
+            **(pkg.get("devDependencies") or {}),
+            **(pkg.get("optionalDependencies") or {}),
+        }
         picked = {n: e for n, e in now.items() if n in direct}
     out = []
     for n, (v, resolved) in sorted(picked.items()):
@@ -601,7 +749,64 @@ def targets(command: str, cwd: str) -> list[tuple[str, str]]:
 
 
 def decide(command: str, cwd: str, env: dict[str, str] | None = None) -> dict[str, Any] | None:
+    """The hook's answer for one shell command, logged locally (see `skedaddle-mcp stats`)."""
+    _LAST[0] = []
+    res = _decide(command, cwd, env)
+    if _LAST[0]:
+        hs = (res or {}).get("hookSpecificOutput") or {}
+        decision = hs.get("permissionDecision") or ("warn" if hs.get("additionalContext") else "allow")
+        log_decision(
+            {
+                "cwd": cwd,
+                "command": redact(command)[:300],
+                "decision": decision,
+                "packages": [f"{e}:{s}" for e, s in _LAST[0]],
+                "reason": redact(hs.get("permissionDecisionReason") or hs.get("additionalContext") or "")[:600],
+            }
+        )
+    return res
+
+
+_LAST: list = [[]]
+
+
+def redact(text: str) -> str:
+    """Strip what must never reach a log: NAME=VALUE values, user:password@ in URLs, long token-like strings."""
+    text = re.sub(r"(?<![\w-])([A-Za-z_][A-Za-z0-9_]*)=(\S+)", r"\1=***", text)
+    text = re.sub(r"(://)[^/@\s]+@", r"\1***@", text)
+    return re.sub(r"\b[A-Za-z0-9_\-]{32,}\b", "***", text)
+
+
+def log_path() -> str | None:
+    v = os.environ.get("SKEDADDLE_LOG")
+    if v == "0":
+        return None
+    return v or os.path.join(
+        os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state"),
+        "skedaddle",
+        "decisions.jsonl",
+    )
+
+
+def log_decision(row: dict[str, Any]) -> None:
+    """Append one JSON line (0600). Local only: nothing is sent anywhere. SKEDADDLE_LOG=0 disables it."""
+    import time as _time
+
+    path = log_path()
+    if not path:
+        return
+    try:
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"ts": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()), **row}) + "\n")
+    except OSError:
+        pass
+
+
+def _decide(command: str, cwd: str, env: dict[str, str] | None = None) -> dict[str, Any] | None:
     tg, asks = plan(command, cwd, env)
+    _LAST[0] = tg or [("-", a[:80]) for a in asks]
     if not tg and not asks:
         return None
     blocks, warns, errors = [], [], list(asks)
@@ -613,7 +818,8 @@ def decide(command: str, cwd: str, env: dict[str, str] | None = None) -> dict[st
             errors.append(str(e))
     budget = float(os.environ.get("SKEDADDLE_HOOK_BUDGET", "20"))  # under the harness timeout: a killed hook = allowed
     ex = ThreadPoolExecutor(max_workers=8)
-    futs = {ex.submit(check_package, eco, name, version): (eco, name) for eco, name, version in jobs}
+    cfg = _ACTIVE[0]
+    futs = {ex.submit(check_package, eco, name, version, cfg): (eco, name) for eco, name, version in jobs}
     done, late = wait(futs, timeout=budget)
     ex.shutdown(wait=False, cancel_futures=True)
     errors += [f"{futs[fut][0]}:{futs[fut][1]}: not checked within {budget:.0f}s" for fut in late]
@@ -630,7 +836,22 @@ def decide(command: str, cwd: str, env: dict[str, str] | None = None) -> dict[st
         label = f"{eco}:{name}{'@' + rep.version if rep.version else ''}"
         shown = [x for x in rep.findings if x.severity != "info" and (rep.verdict != "block" or x.severity == "block")]
         lines = [f"{label}: {x.message}" + (f" ({x.source})" if x.source else "") for x in shown]
+        if rep.verdict == "block" and rep.suggestion:
+            sug = rep.suggestion
+            if "version" in sug:
+                fixed = f"{name}=={sug['version']}" if eco == "pypi" else f"{name}@{sug['version']}"
+                lines.append(f"-> install {fixed} instead: it fixes every blocking advisory above (same major line when possible)")
+            elif "did_you_mean" in sug:
+                lines.append(f"-> did you mean `{sug['did_you_mean']}`? Check it is the package you intended before installing")
         {"block": blocks, "warn": warns, "error": errors}.get(rep.verdict, []).extend(lines)
+    untrusted = getattr(_ACTIVE[0], "untrusted", None)
+    if untrusted:
+        note = (f"(note: {untrusted} is not trusted, never reviewed or changed since, so its exceptions and mirrors are "
+                "ignored until the user runs `skedaddle-mcp trust`)")
+        if blocks:
+            blocks.append(note)
+        elif errors:
+            errors.append(note)
     if blocks:
         return _out(
             "deny",
