@@ -29,10 +29,7 @@ class FetchError(Exception):
 def fixture_key(url: str, body: dict[str, Any] | None = None) -> str:
     key = re.sub(r"[^A-Za-z0-9._-]+", "_", re.sub(r"^https?://", "", url)).strip("_")
     if body is not None:
-        key += (
-            "__"
-            + hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()[:12]
-        )
+        key += "__" + hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()[:12]
     return key[:180]
 
 
@@ -49,6 +46,91 @@ def get_json(
             raise NotFound(url)
         with open(path, encoding="utf-8") as fh:
             return json.load(fh)
+    cached = _cache_get(url, body)
+    if cached is not None:
+        if cached.get("status") == 404:
+            raise NotFound(url)
+        return cached.get("body")
+    try:
+        doc = _fetch(url, body, timeout, retries)
+        trim = next((fn for prefix, fn in TRIMMERS if url.startswith(prefix)), None)
+        if trim is not None:
+            doc = trim(doc)  # keep only what the checks read: next's packument is 31 MB, its trimmed form a fraction
+    except NotFound:
+        _cache_put(url, body, 404, None)
+        raise
+    _cache_put(url, body, 200, doc)
+    return doc
+
+
+# ---------------------------------------------------------------- disk cache
+# A hook that adds 1-4 s to every install gets uninstalled. Registry metadata changes slowly; OSV and the registries
+# are re-asked after the TTL. A cached 404 keeps blocking (the safe direction) only briefly, so a name that gets
+# registered is re-checked soon. Private: the directory is 0700 and files are 0600. SKEDADDLE_CACHE=0 disables it.
+TTL = [  # (url prefix, seconds)
+    ("https://api.osv.dev/", 3600),
+    ("https://api.npmjs.org/downloads/", 86400),
+    ("https://pypi.org/integrity/", 86400),
+]
+DEFAULT_TTL, NOT_FOUND_TTL = 900, 300
+TRIMMERS: list[tuple[str, Any]] = []  # (url prefix, fn(doc) -> smaller doc); registered by core
+
+
+def _cache_dir() -> str | None:
+    if os.environ.get("SKEDADDLE_CACHE") == "0":
+        return None
+    d = os.environ.get("SKEDADDLE_CACHE_DIR") or os.path.join(
+        os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache"), "skedaddle"
+    )
+    try:
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        os.chmod(d, 0o700)
+    except OSError:
+        return None
+    return d
+
+
+def _cache_path(url: str, body: dict[str, Any] | None) -> str | None:
+    d = _cache_dir()
+    if d is None:
+        return None
+    key = hashlib.sha256((url + "\0" + json.dumps(body, sort_keys=True)).encode()).hexdigest()
+    return os.path.join(d, key + ".json")
+
+
+def _cache_get(url: str, body: dict[str, Any] | None) -> dict[str, Any] | None:
+    path = _cache_path(url, body)
+    if path is None:
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            entry = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    ttl = NOT_FOUND_TTL if entry.get("status") == 404 else next((t for p, t in TTL if url.startswith(p)), DEFAULT_TTL)
+    if not isinstance(entry, dict) or entry.get("url") != url or time.time() - float(entry.get("t", 0)) > ttl:
+        return None
+    return entry
+
+
+def _cache_put(url: str, body: dict[str, Any] | None, status: int, doc: Any) -> None:
+    path = _cache_path(url, body)
+    if path is None:
+        return
+    tmp = f"{path}.{os.getpid()}.tmp"
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump({"url": url, "t": time.time(), "status": status, "body": doc}, fh)
+        os.replace(tmp, path)
+    except OSError:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
+def _fetch(url: str, body: dict[str, Any] | None, timeout: float, retries: int) -> Any:
     last: Exception | None = None
     for _ in range(retries + 1):
         req = urllib.request.Request(

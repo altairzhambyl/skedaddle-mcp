@@ -13,6 +13,7 @@ import urllib.parse
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from . import http
 from .http import FetchError, NotFound, get_json
 
 ECOSYSTEMS = {"npm": "npm", "pypi": "PyPI", "crates": "crates.io", "cargo": "crates.io"}
@@ -169,6 +170,29 @@ def _fresh_npm_dep(names: list[str], cap: int = 10) -> str | None:
         if age < FRESH_PACKAGE_DAYS:
             return f"{dep} was first published {age:.0f} days ago"
     return None
+
+
+def _trim_npm_packument(doc: Any) -> Any:
+    """The fields npm checks read, per version: publisher, provenance presence, install hooks, dependencies, gitHead."""
+    if not isinstance(doc, dict) or "versions" not in doc:
+        return doc
+    out = {k: doc.get(k) for k in ("name", "dist-tags", "time")}
+    out["versions"] = {}
+    for v, m in (doc.get("versions") or {}).items():
+        if not isinstance(m, dict):
+            continue
+        att = (m.get("dist") or {}).get("attestations")
+        out["versions"][v] = {
+            "_npmUser": {"name": (m.get("_npmUser") or {}).get("name")},
+            "dist": {"attestations": {"present": True}} if att else {},
+            "scripts": {k: s for k, s in (m.get("scripts") or {}).items() if k in INSTALL_HOOKS},
+            "dependencies": m.get("dependencies") or {},
+            "gitHead": m.get("gitHead"),
+        }
+    return out
+
+
+http.TRIMMERS.append(("https://registry.npmjs.org/", _trim_npm_packument))
 
 
 def _npm_publisher(meta: dict[str, Any]) -> str | None:
@@ -509,6 +533,34 @@ def crates_findings(rep: Report, name: str, version: str | None) -> str | None:
     return version
 
 
+def _prefetch(eco: str, name: str, version: str | None) -> None:
+    """Fire the independent lookups at once so the sequential checks below read them from the disk cache: a cold
+    check costs one round trip instead of three. Best effort: any failure here is retried by the real lookup."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from .http import _cache_dir
+
+    if os.environ.get("SKEDADDLE_FIXTURES") or _cache_dir() is None:
+        return
+    q = urllib.parse.quote(name, safe="@")
+    jobs: list[tuple[str, dict[str, Any] | None]] = []
+    if eco == "npm":
+        jobs += [(f"https://registry.npmjs.org/{q}", None), (f"https://api.npmjs.org/downloads/point/last-week/{q}", None)]
+    elif eco == "PyPI":
+        jobs.append((f"https://pypi.org/pypi/{urllib.parse.quote(name)}/json", None))
+    if version:
+        jobs.append(("https://api.osv.dev/v1/query", {"package": {"name": name, "ecosystem": eco}, "version": version}))
+
+    def one(job: tuple[str, dict[str, Any] | None]) -> None:
+        try:
+            get_json(job[0], job[1])
+        except (NotFound, FetchError):
+            pass
+
+    with ThreadPoolExecutor(max_workers=len(jobs) or 1) as ex:
+        list(ex.map(one, jobs))
+
+
 def check_package(ecosystem: str, name: str, version: str | None = None) -> Report:
     """Check one package (optionally one exact version). Never raises: a failure is verdict 'error' with the reason."""
     eco = ECOSYSTEMS.get(ecosystem.lower())
@@ -523,6 +575,7 @@ def check_package(ecosystem: str, name: str, version: str | None = None) -> Repo
             )
         )
         return rep
+    _prefetch(eco, name, version)
     try:
         fn = {"npm": npm_findings, "PyPI": pypi_findings, "crates.io": crates_findings}[eco]
         version = fn(rep, name, version)
