@@ -214,3 +214,19 @@ def test_old_dependency_added_in_a_patch_is_info(registry):
     registry("https://registry.npmjs.org/old-dep", npm_doc("old-dep", [("1.0.0", "2020-01-01T00:00:00Z", {})]))
     rep = check_package("npm", "pkg-i", "3.35.1")
     assert rep.verdict == "allow" and "deps-added-in-patch" in signals(rep, "info")
+
+
+def test_first_release_of_a_new_major_still_checked_for_provenance(registry):
+    rel = [(f"1.0.{i}", f"2026-01-0{i + 1}T00:00:00Z", ATT) for i in range(5)] + [("2.0.0", "2026-01-09T00:00:00Z", {})]
+    registry("https://registry.npmjs.org/pkg-j", npm_doc("pkg-j", rel))
+    assert "provenance-lost" in signals(check_package("npm", "pkg-j", "2.0.0"), "block")
+
+
+def test_every_added_dependency_is_checked(registry):
+    deps = {"a": "^1.0.0", **{f"old{i}": "^1.0.0" for i in range(4)}, "zz-brand-new-dep": "^1.0.0"}
+    rel = [("1.0.0", "2025-01-01T00:00:00Z", {}), ("1.0.1", "2025-02-01T00:00:00Z", {"dependencies": deps})]
+    registry("https://registry.npmjs.org/pkg-k", npm_doc("pkg-k", rel))
+    for i in range(4):
+        registry(f"https://registry.npmjs.org/old{i}", npm_doc(f"old{i}", [("1.0.0", "2020-01-01T00:00:00Z", {})]))
+    # zz-brand-new-dep (sorts last) has no fixture = does not exist: the 6th added dependency must still be seen
+    assert "deps-added-in-patch" in signals(check_package("npm", "pkg-k", "1.0.1"), "warn")

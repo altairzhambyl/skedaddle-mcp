@@ -151,8 +151,10 @@ def osv_findings(rep: Report, eco: str, name: str, version: str | None) -> None:
 
 
 # ---------------------------------------------------------------- npm
-def _fresh_npm_dep(names: list[str]) -> str | None:
-    """'x is N days old' / 'x does not exist' for the first added dependency that is new or missing, else None."""
+def _fresh_npm_dep(names: list[str], cap: int = 10) -> str | None:
+    """Why an added dependency is suspicious (new, missing, unknown age, or too many to check), else None."""
+    if len(names) > cap:
+        return f"{len(names)} dependencies added, more than the {cap} checked"
     for dep in names:
         url = f"https://registry.npmjs.org/{urllib.parse.quote(dep, safe='@')}"
         try:
@@ -162,7 +164,9 @@ def _fresh_npm_dep(names: list[str]) -> str | None:
         except FetchError:
             return f"{dep} could not be checked"
         age = _age_days(created)
-        if age is not None and age < FRESH_PACKAGE_DAYS:
+        if age is None:
+            return f"{dep} has no publication date"
+        if age < FRESH_PACKAGE_DAYS:
             return f"{dep} was first published {age:.0f} days ago"
     return None
 
@@ -251,13 +255,13 @@ def npm_findings(rep: Report, name: str, version: str | None) -> str | None:
         key=lambda v: times[v],
         reverse=True,
     )
-    prior = [v for v in every if tv and _semver(v)[0] == tv[0]] or every[:1]  # a new major: compare to the last release
-    same_line = bool(tv and prior and _semver(prior[0])[0] == tv[0])
+    same = [v for v in every if tv and _semver(v)[0] == tv[0]]
+    prior = same or every  # the first release of a new major line is compared with the recent releases overall
     prev = versions.get(prior[0]) if prior else None
     if prev is not None:
         recent = [versions[v] for v in prior[:10]]
         attested_before = sum(_npm_attested(m) for m in recent[:5])
-        if same_line and attested_before >= 3 and not _npm_attested(meta):
+        if attested_before >= 3 and not _npm_attested(meta):
             rep.add(
                 Finding(
                     "provenance-lost",
@@ -301,7 +305,7 @@ def npm_findings(rep: Report, name: str, version: str | None) -> str | None:
         added = sorted(set(meta.get("dependencies") or {}) - set(prev.get("dependencies") or {}))
         if a and b and a[:2] == b[:2] and added:
             # an added dependency that is itself new is the axios 1.14.1 pattern (plain-crypto-js); an old one is routine
-            new_dep = _fresh_npm_dep(added[:3])
+            new_dep = _fresh_npm_dep(added)
             rep.add(
                 Finding(
                     "deps-added-in-patch",

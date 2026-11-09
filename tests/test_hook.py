@@ -331,3 +331,12 @@ def test_shell_getopt_clusters(tmp_path):
     assert plan("bash -opipefail -c 'npm i left-pad'", cwd, {})[0] == [("npm", "left-pad")]  # value glued to -o
     assert plan("zsh -eo pipefail -c 'npm i left-pad'", cwd, {})[0] == [("npm", "left-pad")]
     assert _asks("bash -c", cwd)  # -c with no command string: cannot tell what runs
+
+
+def test_shell_cluster_with_o_and_c(tmp_path):
+    """review of 328712e: `-oc` / `-co`: with -c present, every remaining word is walked (an extra check, never a skip)."""
+    from skedaddle_mcp.hook import plan
+
+    cwd = str(tmp_path)
+    assert ("npm", "left-pad") in plan("bash -oc pipefail 'npm i left-pad'", cwd, {})[0]
+    assert ("npm", "left-pad") in plan("bash -co pipefail 'npm i left-pad'", cwd, {})[0]

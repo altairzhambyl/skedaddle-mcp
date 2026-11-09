@@ -227,35 +227,14 @@ def _words(seg: str) -> list[str]:
 SHELL_VALUE_OPTS = {"-o", "+o", "-O", "+O", "--rcfile", "--init-file"}
 
 
-def _shell_command(args: list[str]) -> str | None:
-    """The command string of `sh -c CMD`, `bash -lc CMD`, `bash -o pipefail -c CMD`, `bash -opipefail -c CMD`.
-    None if this is not a -c invocation; "" if -c is given but no command string follows (the caller asks)."""
-    has_c, i = False, 0
-    while i < len(args):
-        a = args[i]
-        if a in ("--rcfile", "--init-file"):
-            i += 2
-            continue
-        if a == "--":
-            i += 1
-            break
-        if a.startswith("--"):
-            i += 1
-            continue
-        if a.startswith(("-", "+")) and len(a) > 1:
-            i += 1
-            for k, ch in enumerate(a[1:]):
-                if ch == "c":
-                    has_c = True
-                elif ch in "oO":
-                    if k + 2 >= len(a):  # -o at the end of the cluster: its value is the next word
-                        i += 1
-                    break  # the rest of the cluster (if any) is the option's value
-            continue
-        break
-    if not has_c:
+def _shell_command(args: list[str]) -> list[str] | None:
+    """Candidate command strings of `sh -c ...`: None if no -c; [] if -c but nothing follows (the caller asks).
+    Option values (`-o pipefail`, `-opipefail`, `-oc pipefail`) and the command are not told apart: with -c anywhere in
+    the options, every non-option word is a candidate. Walking an extra word is an extra check, never a skip."""
+    opts = [a for a in args if a.startswith(("-", "+")) and len(a) > 1 and not a.startswith("--")]
+    if not any("c" in a[1:] for a in opts):
         return None
-    return args[i] if i < len(args) else ""
+    return [a for a in args if not (a.startswith(("-", "+")) and len(a) > 1)]
 
 
 def _operands(
@@ -329,11 +308,12 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
             continue
         if prog in SHELLS:
             inner = _shell_command(args)
-            if inner == "":
+            if inner == []:
                 p.asks.append(f"{prog} -c with no command string: cannot tell what runs")
                 continue
             if inner is not None and depth < 3:
-                _walk(inner, cwd, p, depth + 1)
+                for cand in inner:
+                    _walk(cand, cwd, p, depth + 1)
                 continue
         if re.match(r"^python(\d+(\.\d+)?)?$", prog) and args[:2] == ["-m", "pip"]:
             prog, args = "pip", args[2:]
@@ -475,8 +455,11 @@ def _toml(path: str) -> dict[str, Any] | None:
         return {}
     try:
         import tomllib
-    except ModuleNotFoundError:  # Python 3.10: cannot read it, so cannot tell
-        return None
+    except ModuleNotFoundError:  # Python 3.10: the tomli backport (a dependency there)
+        try:
+            import tomli as tomllib
+        except ModuleNotFoundError:
+            return None  # cannot read it, so cannot tell
     try:
         return tomllib.loads(text)
     except ValueError:

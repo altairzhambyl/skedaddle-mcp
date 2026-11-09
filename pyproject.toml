@@ -19,7 +19,7 @@ classifiers = [
   "Topic :: Security",
   "Topic :: Software Development :: Build Tools",
 ]
-dependencies = ["mcp>=2.3,<3"]
+dependencies = ["mcp>=2.3,<3", "tomli>=2; python_version < '3.11'"]
 
 [project.urls]
 Repository = "https://github.com/altairzhambyl/skedaddle-mcp"
