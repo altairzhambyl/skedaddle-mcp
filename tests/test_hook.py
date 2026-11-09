@@ -340,3 +340,16 @@ def test_shell_cluster_with_o_and_c(tmp_path):
     cwd = str(tmp_path)
     assert ("npm", "left-pad") in plan("bash -oc pipefail 'npm i left-pad'", cwd, {})[0]
     assert ("npm", "left-pad") in plan("bash -co pipefail 'npm i left-pad'", cwd, {})[0]
+
+
+# ---- MCP servers are packages (postmark-mcp 2025: one BCC line added in a patch release) ----------------------------
+def test_mcp_server_registration_is_an_install(tmp_path):
+    from skedaddle_mcp.hook import plan
+
+    cwd = str(tmp_path)
+    assert plan("claude mcp add github -- npx -y @modelcontextprotocol/server-github", cwd, {})[0] == [
+        ("npm", "@modelcontextprotocol/server-github")]
+    assert plan("claude mcp add --scope user fetch -- uvx mcp-server-fetch", cwd, {})[0] == [("pypi", "mcp-server-fetch")]
+    assert plan('claude mcp add-json pm \'{"command":"npx","args":["-y","postmark-mcp@1.0.16"]}\'', cwd, {})[0] == [
+        ("npm", "postmark-mcp@1.0.16")]
+    assert plan("claude mcp list", cwd, {})[0] == []

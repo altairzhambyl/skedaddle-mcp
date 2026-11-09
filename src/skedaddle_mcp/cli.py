@@ -38,6 +38,25 @@ def main(argv: list[str] | None = None) -> int:
         rc = hook()
         sys.stdout.flush()
         os._exit(rc)  # do not wait for check threads abandoned at the time budget
+    if args[0] == "trust":
+        import os
+
+        from .config import _repo_file, trust
+
+        path = args[1] if len(args) > 1 and not args[1].startswith("-") else _repo_file(os.getcwd())
+        if not path or not os.path.exists(path):
+            print("no .skedaddle.toml found", file=sys.stderr)
+            return 3
+        with open(path, encoding="utf-8") as fh:
+            print(fh.read())
+        if "--yes" not in args:
+            if not sys.stdin.isatty():
+                print("refusing: review the policy above and confirm interactively (or pass --yes yourself)", file=sys.stderr)
+                return 3
+            if input(f"Trust exactly this content of {path}? [y/N] ").strip().lower() not in ("y", "yes"):
+                return 1
+        print(f"trusted {path} sha256={trust(path)}")
+        return 0
     if args[0] == "doctor":
         from .doctor import main as doctor
 

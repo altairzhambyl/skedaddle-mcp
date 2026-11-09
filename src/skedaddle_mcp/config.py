@@ -31,6 +31,7 @@ class Config:
     allow: list[dict[str, Any]] = field(default_factory=list)
     files: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    untrusted: str | None = None  # a repo policy file that exists but is not (or no longer) trusted by the user
 
     def trusted(self, url: str) -> bool:
         """https, no userinfo, the exact host of a trusted entry, and its path as a prefix."""
@@ -96,11 +97,59 @@ def _repo_file(cwd: str) -> str | None:
     return None
 
 
+def _state_dir() -> str:
+    return os.environ.get("SKEDADDLE_STATE_DIR") or os.path.join(
+        os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state"), "skedaddle")
+
+
+def _sha(path: str) -> str | None:
+    import hashlib
+
+    try:
+        with open(path, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+    except OSError:
+        return None
+
+
+def _trusted_hashes() -> dict[str, str]:
+    import json
+
+    try:
+        with open(os.path.join(_state_dir(), "trusted.json"), encoding="utf-8") as fh:
+            doc = json.load(fh)
+        return doc if isinstance(doc, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def trust(path: str) -> str:
+    """Record that the user reviewed this exact repo policy file (by sha256). Any later edit voids it."""
+    import json
+
+    path, digest = os.path.realpath(path), _sha(path)
+    if digest is None:
+        raise OSError(f"cannot read {path}")
+    d = _state_dir()
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    hashes = {**_trusted_hashes(), path: digest}
+    tmp = os.path.join(d, f"trusted.json.{os.getpid()}")
+    with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as fh:
+        json.dump(hashes, fh, indent=1)
+    os.replace(tmp, os.path.join(d, "trusted.json"))
+    return digest
+
+
 def load(cwd: str | None = None) -> Config:
     cfg = Config()
     xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
     user = os.environ.get("SKEDADDLE_USER_CONFIG") or os.path.join(xdg, "skedaddle", "config.toml")
-    for path in (user, _repo_file(cwd or os.getcwd())):
+    repo = _repo_file(cwd or os.getcwd())
+    if repo and _trusted_hashes().get(os.path.realpath(repo)) != _sha(repo):
+        # a repo file can come from a malicious PR or be written by the agent itself: it relaxes checks only after
+        # the user reviewed this exact content (`skedaddle-mcp trust`); an edit voids it (review of c0fe100)
+        cfg.untrusted, repo = repo, None
+    for path in (user, repo):
         if not path or not os.path.exists(path):
             continue
         try:

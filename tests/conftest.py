@@ -18,6 +18,7 @@ def _hermetic(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("SKEDADDLE_LOG", str(d / "decisions.jsonl"))
     monkeypatch.setenv("SKEDADDLE_CACHE_DIR", str(d / "cache"))
     monkeypatch.setenv("SKEDADDLE_USER_CONFIG", str(d / "config.toml"))  # not XDG_CONFIG_HOME: git hooks live there
+    monkeypatch.setenv("SKEDADDLE_STATE_DIR", str(d / "state"))
 
 
 @pytest.fixture

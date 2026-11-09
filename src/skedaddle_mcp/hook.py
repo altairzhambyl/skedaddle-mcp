@@ -132,6 +132,8 @@ def _public_official(url: str) -> bool:
         return False
     prefix = OFFICIAL_HOSTS[u.hostname]
     return not prefix or u.path == prefix or u.path.startswith(prefix + "/")
+
+
 REGISTRY_ENV = (
     "npm_config_registry",
     "NPM_CONFIG_REGISTRY",
@@ -213,11 +215,20 @@ def _unwrap(seg: str) -> tuple[list[str], dict[str, str]]:
             for j, t in enumerate(w[1:], 1):
                 if not t.startswith("-"):
                     break
-                split = w[j + 1] if t in ("-S", "--split-string") and j + 1 < len(w) else (
-                    t.split("=", 1)[1] if t.startswith("--split-string=") else t[2:] if t.startswith("-S") and len(t) > 2 else None)
+                split = (
+                    w[j + 1]
+                    if t in ("-S", "--split-string") and j + 1 < len(w)
+                    else (
+                        t.split("=", 1)[1]
+                        if t.startswith("--split-string=")
+                        else t[2:]
+                        if t.startswith("-S") and len(t) > 2
+                        else None
+                    )
+                )
                 if split is not None:
                     inner, more = _unwrap(split)
-                    rest = w[j + 2:] if t in ("-S", "--split-string") else w[j + 1:]
+                    rest = w[j + 2 :] if t in ("-S", "--split-string") else w[j + 1 :]
                     return inner + rest, {**assigns, **more}
         if base in WRAPPER_OPTS:
             i = 1
@@ -286,8 +297,7 @@ def _registry_override(flags: dict[str, list[str]], env: dict[str, str]) -> str 
         (
             f
             for f in flags
-            if (f in REGISTRY_FLAGS or re.match(r"^--@[^:]+:registry$", f))
-            and not all(official(v) for v in flags[f] or ["?"])
+            if (f in REGISTRY_FLAGS or re.match(r"^--@[^:]+:registry$", f)) and not all(official(v) for v in flags[f] or ["?"])
         ),
         None,
     )
@@ -312,9 +322,30 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
     for seg in SEP.split(command):
         w, assigns = _unwrap(seg)
         env = {**p.env, **assigns}
+        guard = _self_protection(seg, w, assigns)
+        if guard:
+            p.asks.append(guard)
+            continue
         if not w:
             continue
         prog, args = os.path.basename(w[0]), w[1:]
+        if prog in ("claude", "codex", "gemini", "cursor-agent") and args[:2] in (["mcp", "add"], ["mcp", "add-json"]):
+            # registering an MCP server is installing a package that runs with the agent's rights (postmark-mcp 2025)
+            if args[1] == "add" and "--" in args:
+                inner = args[args.index("--") + 1 :]
+                if inner and depth < 3:
+                    _walk(shlex.join(inner), cwd, p, depth + 1)
+            elif args[1] == "add-json":
+                blob = next((a for a in args[2:] if a.lstrip().startswith("{")), None)
+                try:
+                    srv = json.loads(blob) if blob else {}
+                except ValueError:
+                    srv = {}
+                if srv.get("command") and depth < 3:
+                    _walk(shlex.join([str(srv["command"]), *[str(x) for x in srv.get("args") or []]]), cwd, p, depth + 1)
+                elif blob and not srv.get("url"):
+                    p.asks.append("MCP server config that skedaddle cannot read: cannot tell what it runs")
+            continue
         if prog == "cd" and args:
             cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(args[0])))
             continue
@@ -383,10 +414,32 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
             for o in fl.get("--with", []):
                 p.add("pypi", o)
         elif prog == "cargo" and args[:1] in (["add"], ["install"]):
-            ops, fl = _operands(args[1:], {"--registry", "--index", "--git", "--config", "--path", "-p", "--package", "--features", "-F",
-                                           "--rename", "--target", "--root", "--version", "--vers", "--branch", "--tag", "--rev"})
+            ops, fl = _operands(
+                args[1:],
+                {
+                    "--registry",
+                    "--index",
+                    "--git",
+                    "--config",
+                    "--path",
+                    "-p",
+                    "--package",
+                    "--features",
+                    "-F",
+                    "--rename",
+                    "--target",
+                    "--root",
+                    "--version",
+                    "--vers",
+                    "--branch",
+                    "--tag",
+                    "--rev",
+                },
+            )
             src = next((f for f in ("--registry", "--index", "--git", "--config") if f in fl), None)
-            src = src or next((k for k in env if k.startswith(("CARGO_REGISTRIES_", "CARGO_SOURCE_")) or k == "CARGO_REGISTRY_DEFAULT"), None)
+            src = src or next(
+                (k for k in env if k.startswith(("CARGO_REGISTRIES_", "CARGO_SOURCE_")) or k == "CARGO_REGISTRY_DEFAULT"), None
+            )
             src = src or _cargo_config_source(cwd, env)
             if src:
                 p.asks.append(f"cargo source override ({src}): crates would come from a source skedaddle does not check")
@@ -409,6 +462,23 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
             _reg(p, fl, env)
             for s in (fl.get("--from", []) or ops[:1]) + fl.get("--with", []):
                 p.add("pypi", s)
+
+
+POLICY_PATHS = (".skedaddle.toml", "skedaddle/config.toml", "skedaddle/trusted.json", "skedaddle/decisions.jsonl")
+READ_ONLY = {"cat", "less", "more", "head", "tail", "grep", "rg", "ls", "stat", "wc", "diff", "file", "bat", "jq"}
+
+
+def _self_protection(seg: str, words: list[str], assigns: dict[str, str]) -> str | None:
+    """The agent must not relax its own checks: trusting a repo policy, writing skedaddle's policy/state files, or
+    setting SKEDADDLE_* for itself are the user's actions (inside-out: an agent editing its own guard)."""
+    prog = os.path.basename(words[0]) if words else ""
+    if any(k.startswith("SKEDADDLE_") for k in assigns) or (prog == "export" and "SKEDADDLE_" in seg):
+        return "setting SKEDADDLE_* changes skedaddle's own behaviour: that is the user's decision, not the agent's"
+    if "skedaddle-mcp" in seg and re.search(r"(^|\s)trust(\s|$)", seg):
+        return "`skedaddle-mcp trust` approves a policy that relaxes checks: only the user may run it"
+    if any(pth in seg for pth in POLICY_PATHS) and (prog not in READ_ONLY or re.search(r">|\btee\b", seg)):
+        return "this command touches skedaddle's policy or state files: changing them is the user's decision"
+    return None
 
 
 def _reg(p: Plan, flags: dict[str, list[str]], env: dict[str, str], npmrc_dir: str | None = None) -> None:
@@ -504,7 +574,8 @@ def _python_project_source(cwd: str, flags: dict[str, list[str]] | None = None) 
     base = os.path.join(cwd, (flags.get("--project") or flags.get("--directory") or ["."])[0])
     proj = next((d for d in _parents(base) if os.path.exists(os.path.join(d, "pyproject.toml"))), None)
     files = ([(os.path.join(proj, "pyproject.toml"), True), (os.path.join(proj, "uv.toml"), False)] if proj else []) + [
-        (os.path.join(os.path.expanduser("~"), ".config", "uv", "uv.toml"), False)]
+        (os.path.join(os.path.expanduser("~"), ".config", "uv", "uv.toml"), False)
+    ]
     for path, is_pyproject in files:
         doc = _toml(path)
         if doc is None:
@@ -533,8 +604,11 @@ def _lock_entries(text: str) -> dict[str, tuple[str, str]]:
         pk = (json.loads(text) if text else {}).get("packages") or {}
     except ValueError:
         return {}
-    return {k.rsplit("node_modules/", 1)[-1]: (m["version"], str(m.get("resolved") or ""))
-            for k, m in pk.items() if "node_modules/" in k and isinstance(m, dict) and m.get("version")}
+    return {
+        k.rsplit("node_modules/", 1)[-1]: (m["version"], str(m.get("resolved") or ""))
+        for k, m in pk.items()
+        if "node_modules/" in k and isinstance(m, dict) and m.get("version")
+    }
 
 
 def _lock_versions(text: str) -> dict[str, str]:
@@ -544,8 +618,14 @@ def _lock_versions(text: str) -> dict[str, str]:
 def _git_head_file(cwd: str, rel: str) -> str | None:
     """File content at git HEAD, or None. `cat-file blob` runs no textconv/filters; system config is ignored."""
     try:
-        r = subprocess.run(["git", "-C", cwd, "-c", "core.fsmonitor=false", "cat-file", "blob", f"HEAD:./{rel}"], check=False,
-                           capture_output=True, text=True, timeout=5, env={**os.environ, "GIT_CONFIG_NOSYSTEM": "1"})
+        r = subprocess.run(
+            ["git", "-C", cwd, "-c", "core.fsmonitor=false", "cat-file", "blob", f"HEAD:./{rel}"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env={**os.environ, "GIT_CONFIG_NOSYSTEM": "1"},
+        )
     except (OSError, subprocess.SubprocessError):
         return None
     return r.stdout if r.returncode == 0 else None
@@ -567,7 +647,11 @@ def _npm_lock_changes(cwd: str, p: Plan) -> list[str]:
                 pkg = json.load(fh)
         except (OSError, ValueError):
             pkg = {}
-        direct = {**(pkg.get("dependencies") or {}), **(pkg.get("devDependencies") or {}), **(pkg.get("optionalDependencies") or {})}
+        direct = {
+            **(pkg.get("dependencies") or {}),
+            **(pkg.get("devDependencies") or {}),
+            **(pkg.get("optionalDependencies") or {}),
+        }
         picked = {n: e for n, e in now.items() if n in direct}
     out = []
     for n, (v, resolved) in sorted(picked.items()):
@@ -619,21 +703,37 @@ def decide(command: str, cwd: str, env: dict[str, str] | None = None) -> dict[st
     if _LAST[0]:
         hs = (res or {}).get("hookSpecificOutput") or {}
         decision = hs.get("permissionDecision") or ("warn" if hs.get("additionalContext") else "allow")
-        log_decision({"cwd": cwd, "command": command[:300], "decision": decision,
-                      "packages": [f"{e}:{s}" for e, s in _LAST[0]],
-                      "reason": (hs.get("permissionDecisionReason") or hs.get("additionalContext") or "")[:600]})
+        log_decision(
+            {
+                "cwd": cwd,
+                "command": redact(command)[:300],
+                "decision": decision,
+                "packages": [f"{e}:{s}" for e, s in _LAST[0]],
+                "reason": redact(hs.get("permissionDecisionReason") or hs.get("additionalContext") or "")[:600],
+            }
+        )
     return res
 
 
 _LAST: list = [[]]
 
 
+def redact(text: str) -> str:
+    """Strip what must never reach a log: NAME=VALUE values, user:password@ in URLs, long token-like strings."""
+    text = re.sub(r"(?<![\w-])([A-Za-z_][A-Za-z0-9_]*)=(\S+)", r"\1=***", text)
+    text = re.sub(r"(://)[^/@\s]+@", r"\1***@", text)
+    return re.sub(r"\b[A-Za-z0-9_\-]{32,}\b", "***", text)
+
+
 def log_path() -> str | None:
     v = os.environ.get("SKEDADDLE_LOG")
     if v == "0":
         return None
-    return v or os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state"),
-                             "skedaddle", "decisions.jsonl")
+    return v or os.path.join(
+        os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state"),
+        "skedaddle",
+        "decisions.jsonl",
+    )
 
 
 def log_decision(row: dict[str, Any]) -> None:
@@ -685,6 +785,14 @@ def _decide(command: str, cwd: str, env: dict[str, str] | None = None) -> dict[s
         shown = [x for x in rep.findings if x.severity != "info" and (rep.verdict != "block" or x.severity == "block")]
         lines = [f"{label}: {x.message}" + (f" ({x.source})" if x.source else "") for x in shown]
         {"block": blocks, "warn": warns, "error": errors}.get(rep.verdict, []).extend(lines)
+    untrusted = getattr(_ACTIVE[0], "untrusted", None)
+    if untrusted:
+        note = (f"(note: {untrusted} is not trusted, never reviewed or changed since, so its exceptions and mirrors are "
+                "ignored until the user runs `skedaddle-mcp trust`)")
+        if blocks:
+            blocks.append(note)
+        elif errors:
+            errors.append(note)
     if blocks:
         return _out(
             "deny",
