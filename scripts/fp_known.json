@@ -1,0 +1,4 @@
+{
+  "_comment": "Blocks on popular packages that a human reviewed and judged TRUE signals (not false positives). The nightly scan does not fail on these; anything else that blocks fails it. Add an entry only with evidence.",
+  "pypi:annotated-doc@0.0.5": "provenance-lost is real: neither file of 0.0.5 has a PEP 740 attestation while 0.0.2-0.0.4 had one (pypi.org/integrity, checked 2026-11-09). Same signal pnpm trustPolicy=no-downgrade uses."
+}

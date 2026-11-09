@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from typing import Any
@@ -67,6 +68,12 @@ def get_json(
             if e.code == 404:
                 raise NotFound(url) from e
             last = e
+            if e.code == 429:  # rate limited: wait as asked (capped) before the retry
+                try:
+                    wait = float(e.headers.get("Retry-After") or 1)
+                except ValueError:
+                    wait = 1.0
+                time.sleep(min(max(wait, 0.2), 2.0))
         except (urllib.error.URLError, TimeoutError, OSError, ValueError) as e:
             last = e
     raise FetchError(f"{url}: {type(last).__name__}: {last}")

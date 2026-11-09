@@ -228,23 +228,34 @@ SHELL_VALUE_OPTS = {"-o", "+o", "-O", "+O", "--rcfile", "--init-file"}
 
 
 def _shell_command(args: list[str]) -> str | None:
-    """The command string of `sh -c CMD` / `bash -lc CMD` / `bash -eo pipefail -c CMD`; None if not a -c invocation."""
+    """The command string of `sh -c CMD`, `bash -lc CMD`, `bash -o pipefail -c CMD`, `bash -opipefail -c CMD`.
+    None if this is not a -c invocation; "" if -c is given but no command string follows (the caller asks)."""
     has_c, i = False, 0
     while i < len(args):
         a = args[i]
         if a in ("--rcfile", "--init-file"):
             i += 2
             continue
+        if a == "--":
+            i += 1
+            break
         if a.startswith("--"):
             i += 1
             continue
         if a.startswith(("-", "+")) and len(a) > 1:
-            cluster = a[1:]
-            has_c = has_c or "c" in cluster
-            i += 1 + sum(ch in "oO" for ch in cluster)  # -o / -O / +o take a value each
+            i += 1
+            for k, ch in enumerate(a[1:]):
+                if ch == "c":
+                    has_c = True
+                elif ch in "oO":
+                    if k + 2 >= len(a):  # -o at the end of the cluster: its value is the next word
+                        i += 1
+                    break  # the rest of the cluster (if any) is the option's value
             continue
-        return a if has_c else None
-    return None
+        break
+    if not has_c:
+        return None
+    return args[i] if i < len(args) else ""
 
 
 def _operands(
@@ -318,6 +329,9 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
             continue
         if prog in SHELLS:
             inner = _shell_command(args)
+            if inner == "":
+                p.asks.append(f"{prog} -c with no command string: cannot tell what runs")
+                continue
             if inner is not None and depth < 3:
                 _walk(inner, cwd, p, depth + 1)
                 continue
@@ -356,6 +370,9 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
             if a[:1] in (["install"], ["sync"]):
                 ops, fl = _operands(a[1:], PIP_VALUES)
                 _reg(p, fl, env)
+                src = _python_project_source(cwd, fl) if prog == "uv" else None  # uv pip reads [tool.uv.pip] / uv.toml
+                if src:
+                    p.asks.append(f"custom package index ({src}): packages would come from a source skedaddle does not check")
                 for o in ops[1:] if a[:1] == ["sync"] else ops:
                     p.add("pypi", o)
                 for e in fl.get("-e", []) + fl.get("--editable", []):
@@ -378,7 +395,7 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
                                            "--rename", "--target", "--root", "--version", "--vers", "--branch", "--tag", "--rev"})
             src = next((f for f in ("--registry", "--index", "--git", "--config") if f in fl), None)
             src = src or next((k for k in env if k.startswith(("CARGO_REGISTRIES_", "CARGO_SOURCE_")) or k == "CARGO_REGISTRY_DEFAULT"), None)
-            src = src or _cargo_config_source(cwd)
+            src = src or _cargo_config_source(cwd, env)
             if src:
                 p.asks.append(f"cargo source override ({src}): crates would come from a source skedaddle does not check")
             ver = (fl.get("--version") or fl.get("--vers") or [None])[0]
@@ -388,7 +405,7 @@ def _walk(command: str, cwd: str, p: Plan, depth: int) -> None:
         elif (prog == "uv" and args[:1] == ["add"]) or (prog == "poetry" and args[:1] == ["add"]):
             ops, fl = _operands(args[1:], PIP_VALUES | {"--source"})
             src = "--source" if "--source" in fl else next((k for k in env if k.startswith("POETRY_REPOSITORIES_")), None)
-            src = src or _pyproject_source(cwd)
+            src = src or _python_project_source(cwd, fl)
             if src:
                 p.asks.append(f"custom package source ({src}): packages would come from a source skedaddle does not check")
             _reg(p, fl, env)
@@ -451,18 +468,60 @@ def _parents(cwd: str, limit: int = 12):
         d = parent
 
 
-def _cargo_config_source(cwd: str) -> str | None:
-    for d in _parents(cwd):
+def _toml(path: str) -> dict[str, Any] | None:
+    """Parsed TOML, {} if the file does not exist, None if it exists but cannot be parsed (or no tomllib)."""
+    text = _read(path)
+    if not text and not os.path.exists(path):
+        return {}
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python 3.10: cannot read it, so cannot tell
+        return None
+    try:
+        return tomllib.loads(text)
+    except ValueError:
+        return None
+
+
+def _cargo_config_source(cwd: str, env: dict[str, str] | None = None) -> str | None:
+    """A cargo config (project .cargo/ in cwd and parents, then $CARGO_HOME) that replaces crates.io or adds registries."""
+    env = env or {}
+    home = env.get("CARGO_HOME") or os.environ.get("CARGO_HOME") or os.path.join(os.path.expanduser("~"), ".cargo")
+    dirs = [os.path.join(d, ".cargo") for d in _parents(cwd)] + [home]
+    for d in dirs:
         for name in ("config.toml", "config"):
-            path = os.path.join(d, ".cargo", name)
-            if re.search(r"^\s*\[(source\.[^\]]+|registries(\.[^\]]+)?)\]", _read(path), re.MULTILINE):
+            path = os.path.join(d, name)
+            doc = _toml(path)
+            if doc is None:
+                return f"{path} (cannot be parsed)"
+            if doc.get("source") or doc.get("registries") or (doc.get("registry") or {}).get("default"):
                 return path
     return None
 
 
-def _pyproject_source(cwd: str) -> str | None:
-    path = os.path.join(cwd, "pyproject.toml")
-    return path if re.search(r"^\s*\[\[tool\.(poetry\.source|uv\.index)\]\]", _read(path), re.MULTILINE) else None
+UV_INDEX_KEYS = ("index", "index-url", "extra-index-url", "find-links", "default-index")
+
+
+def _python_project_source(cwd: str, flags: dict[str, list[str]] | None = None) -> str | None:
+    """A custom index/source declared where uv/poetry would read it: the nearest pyproject.toml (cwd and parents, or
+    --project/--directory), its uv.toml, and the user uv.toml."""
+    flags = flags or {}
+    base = os.path.join(cwd, (flags.get("--project") or flags.get("--directory") or ["."])[0])
+    proj = next((d for d in _parents(base) if os.path.exists(os.path.join(d, "pyproject.toml"))), None)
+    files = ([(os.path.join(proj, "pyproject.toml"), True), (os.path.join(proj, "uv.toml"), False)] if proj else []) + [
+        (os.path.join(os.path.expanduser("~"), ".config", "uv", "uv.toml"), False)]
+    for path, is_pyproject in files:
+        doc = _toml(path)
+        if doc is None:
+            return f"{path} (cannot be parsed)"
+        tool = (doc.get("tool") or {}) if is_pyproject else {"uv": doc}
+        uv, poetry = tool.get("uv") or {}, tool.get("poetry") or {}
+        pip = uv.get("pip") or {}
+        if any(uv.get(k) or pip.get(k) for k in UV_INDEX_KEYS) or poetry.get("source"):
+            return path
+        if any(isinstance(v, dict) and (v.keys() & {"index", "url", "git", "path"}) for v in (uv.get("sources") or {}).values()):
+            return f"{path} [tool.uv.sources]"
+    return None
 
 
 def _read(path: str) -> str:
